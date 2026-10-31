@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HELIX-MERIDIAN // Diagnostic Suite</title>
+<style>
+  :root {
+    --bg: #03101a;
+    --stage-bg: radial-gradient(ellipse at 50% 40%, #0d3550 0%, #061a28 55%, #020a12 100%);
+    --panel: rgba(8, 38, 58, 0.62);
+    --panel-edge: rgba(90, 210, 255, 0.35);
+    --line: #3fd4ff;
+    --line-dim: rgba(63, 212, 255, 0.35);
+    --text: #bfefff;
+    --text-dim: #6fa9c0;
+    --accent: #ff5a4a;
+    --ok: #5dffb0;
+    --warn: #ffb347;
+    --body-fill: rgba(110, 215, 255, 0.07);
+    --body-stroke: #6fe3ff;
+    --mesh: rgba(111, 227, 255, 0.16);
+    --bone: #dff8ff;
+    --organ-fill: rgba(255, 120, 105, 0.38);
+    --organ-stroke: #ff9e8c;
+    --vasc: #ff4d6a;
+    --nerve: #ffd65a;
+    --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --glow: 0 0 6px rgba(63, 212, 255, 0.6);
+  }
+  body.mode-xray {
+    --bg: #05080c;
+    --stage-bg: linear-gradient(180deg, #1d65a3 0%, #18578d 100%);
+    --panel: rgba(2, 6, 12, 0.92);
+    --panel-edge: rgba(150, 200, 240, 0.35);
+    --line: #a9d6ff;
+    --line-dim: rgba(169, 214, 255, 0.35);
+    --text: #dcecff;
+    --text-dim: #7d97b4;
+    --accent: #ffffff;
+    --body-fill: rgba(0, 12, 28, 0.78);
+    --body-stroke: rgba(170, 220, 255, 0.45);
+    --mesh: rgba(120, 190, 255, 0.07);
+    --bone: #d8eeff;
+    --organ-fill: rgba(120, 235, 240, 0.32);
+    --organ-stroke: #9ff3ff;
+    --vasc: #7fc8ff;
+    --nerve: #c8e6ff;
+    --glow: 0 0 3px rgba(200, 230, 255, 0.4);
+  }
+  body.mode-crt {
+    --bg: #000;
+    --stage-bg: #000208;
+    --panel: #00030c;
+    --panel-edge: #2c5bff;
+    --line: #4d8dff;
+    --line-dim: rgba(77, 141, 255, 0.4);
+    --text: #7fb0ff;
+    --text-dim: #3f63b8;
+    --accent: #e6b84a;
+    --ok: #7fb0ff;
+    --body-fill: #2547d8;
+    --body-stroke: #6f8dff;
+    --mesh: transparent;
+    --bone: #9cc0ff;
+    --organ-fill: #58c8ff;
+    --organ-stroke: #b6e8ff;
+    --vasc: #e6b84a;
+    --nerve: #ff8a3a;
+    --font: var(--mono);
+    --glow: 0 0 4px rgba(90, 140, 255, 0.9);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.4 var(--font);
+    overflow: hidden;
+    transition: background .4s;
+  }
+  body.mode-crt { text-transform: uppercase; letter-spacing: .06em; }
+
+  .app {
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 290px 1fr 310px;
+    grid-template-rows: 48px 1fr 168px;
+    grid-template-areas:
+      "head head head"
+      "left stage right"
+      "vitals vitals vitals";
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* ---------- Generic panel ---------- */
+  .panel {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 4px;
+    padding: 8px 10px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 10px; height: 10px;
+    border: 2px solid var(--line); pointer-events: none;
+  }
+  .panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  .ptitle {
+    font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--line); text-shadow: var(--glow);
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .ptitle .tag { color: var(--accent); font-weight: 700; letter-spacing: .1em; }
+  .col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+
+  /* ---------- Header ---------- */
+  header {
+    grid-area: head;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 12px;
+    border: 1px solid var(--panel-edge);
+    background: var(--panel);
+    border-radius: 4px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 300; letter-spacing: .22em; font-size: 15px; white-space: nowrap; }
+  .logo svg { width: 26px; height: 26px; }
+  .logo b { font-weight: 700; color: var(--line); text-shadow: var(--glow); }
+  .hdr-field { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .hdr-field span { color: var(--text-dim); margin-right: 6px; }
+  .hdr-field em { font-style: normal; color: var(--accent); background: rgba(0,0,0,.35); padding: 2px 8px; border: 1px solid var(--line-dim); }
+  .spacer { flex: 1; }
+  .modes { display: flex; gap: 4px; }
+
+  button, .btn {
+    font: inherit; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text); background: rgba(0,0,0,.25);
+    border: 1px solid var(--line-dim); border-radius: 3px;
+    padding: 5px 10px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  button:hover { border-color: var(--line); color: var(--line); }
+  button.on { background: var(--line); color: var(--bg); border-color: var(--line); box-shadow: var(--glow); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button.primary:hover { background: var(--accent); color: var(--bg); }
+  button:disabled { opacity: .4; cursor: default; }
+
+  /* ---------- Left column ---------- */
+  .left { grid-area: left; }
+  .record dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-family: var(--mono); font-size: 12px; }
+  .record dt { color: var(--text-dim); }
+  .record dd { margin: 0; text-align: right; }
+  #slice { width: 100%; height: 190px; display: block; background: #000; border: 1px solid var(--line-dim); }
+  .slice-meta { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .log-panel { flex: 1; display: flex; flex-direction: column; }
+  #log { flex: 1; overflow-y: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; padding-right: 4px; }
+  #log .ln { white-space: pre-wrap; }
+  #log .ts { color: var(--text-dim); }
+  #log .warn { color: var(--warn); }
+  #log .bad { color: var(--accent); }
+  #log .good { color: var(--ok); }
+  #log::-webkit-scrollbar, .detail-body::-webkit-scrollbar { width: 6px; }
+  #log::-webkit-scrollbar-thumb, .detail-body::-webkit-scrollbar-thumb { background: var(--line-dim); }
+
+  /* ---------- Stage ---------- */
+  .stage {
+    grid-area: stage;
+    background: var(--stage-bg);
+    display: flex; flex-direction: column;
+    padding: 0;
+  }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 8px 10px 0; position: relative; z-index: 2; }
+  .toolbar .lbl { font-size: 10px; letter-spacing: .2em; color: var(--text-dim); margin-right: 4px; }
+  .stage-status {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
+    background: rgba(0,0,0,.45); border: 1px solid var(--line-dim); padding: 4px 14px; white-space: nowrap;
+    font-size: 15px; letter-spacing: .08em; color: var(--text); pointer-events: none;
+    text-shadow: var(--glow);
+  }
+  .stage-status .pct { color: var(--accent); font-family: var(--mono); }
+  #figureSvg { flex: 1; width: 100%; min-height: 0; display: block; touch-action: none; user-select: none; }
+
+  .skin-fill { fill: var(--body-fill); stroke: var(--body-stroke); stroke-width: 1.6; transition: fill .4s; }
+  .mesh line { stroke: var(--mesh); stroke-width: .6; }
+  .bone { fill: none; stroke: var(--bone); stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+  .bone-fill { fill: var(--bone); opacity: .55; }
+  .vasc path { fill: none; stroke: var(--vasc); stroke-width: 1.6; opacity: .75; stroke-linecap: round; }
+  .nerve path { fill: none; stroke: var(--nerve); stroke-width: 1.1; opacity: .8; stroke-dasharray: 3 2; stroke-linecap: round; }
+  .nerve path.cord { stroke-width: 2.4; stroke-dasharray: none; }
+  .organ { cursor: pointer; }
+  .organ .of { fill: var(--organ-fill); stroke: var(--organ-stroke); stroke-width: 1.1; transition: fill .2s, stroke-width .2s; }
+  .organ .ol { fill: none; stroke: var(--organ-stroke); stroke-width: .8; opacity: .7; }
+  .organ .hit { fill: transparent; stroke: none; }
+  .organ:hover .of { stroke-width: 2; }
+  .organ.sel .of { stroke-width: 2.4; filter: url(#glow); }
+  .organ.scanned .of { stroke: var(--ok); }
+  .organ.anom .of { stroke: var(--accent); }
+  #skeleton.organ:hover .bone, #skeleton.organ.sel .bone { stroke: var(--line); }
+  .layer-hidden { display: none; }
+
+  .ruler line { stroke: var(--line); stroke-width: .8; opacity: .85; }
+  .ruler line.major { stroke-width: 1.1; }
+  .reticle-box { fill: none; stroke: var(--line); stroke-width: 1; opacity: .8; }
+  .reticle-corner { fill: none; stroke: var(--line); stroke-width: 2; }
+  .reticle-handle { fill: rgba(0,0,0,.35); stroke: var(--line); stroke-width: 2; cursor: grab; }
+  .reticle-handle:active { cursor: grabbing; }
+  .rtext { fill: var(--line); font: 9px var(--mono); }
+  .beam-line { stroke: var(--line); stroke-width: 1.4; filter: url(#glow); }
+  .marker circle { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+  .marker .core { fill: var(--accent); }
+  .marker { cursor: pointer; }
+
+  /* ---------- Right column ---------- */
+  .right { grid-area: right; }
+  .zoom-wrap { position: relative; height: 170px; border: 1px solid var(--line-dim); background: rgba(0,0,0,.35); }
+  body.mode-xray .zoom-wrap { background: #1b5c96; }
+  #zoomSvg { width: 100%; height: 100%; display: block; }
+  .zoom-wrap::before, .zoom-wrap::after { content: ""; position: absolute; background: var(--line); opacity: .5; pointer-events: none; }
+  .zoom-wrap::before { left: 50%; top: 10%; bottom: 10%; width: 1px; }
+  .zoom-wrap::after { top: 50%; left: 10%; right: 10%; height: 1px; }
+  .detail { flex: 1; display: flex; flex-direction: column; }
+  .detail-body { flex: 1; overflow-y: auto; padding-right: 4px; }
+  .dname { font-size: 18px; font-weight: 300; letter-spacing: .06em; color: var(--text); }
+  .dsys { font-size: 11px; color: var(--text-dim); letter-spacing: .14em; text-transform: uppercase; }
+  .chip { display: inline-block; font: 700 10px var(--mono); letter-spacing: .12em; padding: 2px 6px; border: 1px solid currentColor; border-radius: 2px; margin: 6px 0; }
+  .chip.ok { color: var(--ok); } .chip.idle { color: var(--text-dim); } .chip.bad { color: var(--accent); animation: blink 1s steps(2) infinite; }
+  .metric { display: grid; grid-template-columns: 1fr auto; font-family: var(--mono); font-size: 12px; margin: 5px 0 1px; }
+  .metric .v { color: var(--line); }
+  .bar { height: 4px; background: rgba(255,255,255,.08); position: relative; }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: var(--line); box-shadow: var(--glow); transition: width .25s; }
+  .bar i.hi { background: var(--warn); }
+  #spark { width: 100%; height: 44px; display: block; margin-top: 8px; border-top: 1px dashed var(--line-dim); }
+  .notes { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .anom-box { margin-top: 8px; border: 1px solid var(--accent); padding: 6px 8px; color: var(--accent); font-size: 12px; }
+  .anom-box button { margin-top: 6px; width: 100%; }
+  #neural { width: 100%; height: 150px; display: block; }
+
+  /* ---------- Vitals ---------- */
+  .vitals {
+    grid-area: vitals;
+    display: grid;
+    grid-template-columns: 1.4fr 1.1fr 170px 230px 250px;
+    gap: 8px;
+  }
+  .vitals.alarm .panel { border-color: var(--accent); animation: alarmflash .8s steps(2) infinite; }
+  .wave { display: flex; flex-direction: column; }
+  .wave canvas { flex: 1; width: 100%; min-height: 0; display: block; }
+  .bignum { position: absolute; right: 12px; top: 6px; font: 300 30px var(--mono); color: var(--line); text-shadow: var(--glow); }
+  .bignum small { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); padding: 3px 0; border-bottom: 1px dotted var(--line-dim); }
+  .stat b { font-weight: 400; font-size: 20px; color: var(--line); }
+  .stat span { font-size: 11px; color: var(--text-dim); }
+  .grid-nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px 6px; font: 12.5px var(--mono); color: var(--warn); }
+  .grid-nums .neg { color: var(--accent); }
+  .ctrl label { display: grid; grid-template-columns: 70px 1fr 36px; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--line); }
+  .ctrl .row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .alarm-text { font: 700 11px var(--mono); color: var(--accent); min-height: 16px; margin-top: 4px; letter-spacing: .08em; }
+  .alarm-text.bypass { color: var(--text); }
+
+  /* ---------- Misc ---------- */
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 20; display: none;
+    background: rgba(0,0,0,.8); border: 1px solid var(--line); color: var(--text);
+    font: 11px var(--mono); padding: 3px 7px; letter-spacing: .08em;
+  }
+  .scanlines {
+    position: fixed; inset: 0; pointer-events: none; z-index: 30; display: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.35) 0 1px, transparent 1px 3px);
+    mix-blend-mode: multiply;
+  }
+  body.mode-crt .scanlines { display: block; }
+  body.mode-crt .vignette { display: block; }
+  .vignette { position: fixed; inset: 0; pointer-events: none; z-index: 31; display: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%); }
+  .help {
+    position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.6);
+  }
+  .help.show { display: flex; }
+  .help .panel { max-width: 460px; padding: 18px 22px; background: var(--bg); }
+  .help kbd { font: 11px var(--mono); border: 1px solid var(--line-dim); padding: 1px 5px; border-radius: 2px; color: var(--line); }
+  .help table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .help td { padding: 3px 6px; }
+  @keyframes blink { 50% { opacity: .3; } }
+  @keyframes alarmflash { 50% { border-color: var(--panel-edge); } }
+
+  @media (max-width: 1150px) {
+    body { overflow: auto; }
+    .app { height: auto; grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "head" "stage" "right" "left" "vitals"; }
+    .stage { height: 80vh; }
+    .vitals { grid-template-columns: 1fr 1fr; }
+    .vitals .wave { height: 150px; }
+    header { flex-wrap: wrap; height: auto; padding: 8px; }
+  }
+</style>
+</head>
+<body class="mode-holo">
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="2" style="color:var(--line)">
+          <path d="M9 3 C23 10, 9 22, 23 29"/><path d="M23 3 C9 10, 23 22, 9 29"/>
+          <line x1="11" y1="8" x2="21" y2="8"/><line x1="11" y1="16" x2="21" y2="16"/><line x1="11" y1="24" x2="21" y2="24"/>
+        </g>
+      </svg>
+      <span><b>HELIX</b>-MERIDIAN BIOSYSTEMS</span>
+    </div>
+    <div class="hdr-field"><span>SUBJECT:</span><em>VANCE, ELARA K.</em></div>
+    <div class="hdr-field"><span>NUMBER:</span><em>HMX-07329</em></div>
+    <div class="spacer"></div>
+    <div class="hdr-field"><span>CYCLE</span><em id="clock">00:00:00</em></div>
+    <div class="modes" role="group" aria-label="Display mode">
+      <button data-mode="holo" class="on">Holo</button>
+      <button data-mode="xray">X-Ray</button>
+      <button data-mode="crt">CRT-84</button>
+    </div>
+    <button id="helpBtn" title="Keyboard shortcuts">?</button>
+  </header>
+
+  <!-- ===================== LEFT ===================== -->
+  <section class="col left">
+    <div class="panel record">
+      <div class="ptitle">Subject File <span class="tag">F / 34</span></div>
+      <dl>
+        <dt>Height</dt><dd>1.71 m</dd>
+        <dt>Mass</dt><dd>61.4 kg</dd>
+        <dt>Blood</dt><dd>O− / RH-NULL</dd>
+        <dt>Genome</dt><dd>98.71% BASELINE</dd>
+        <dt>Augment</dt><dd>CLASS II NEURAL LACE</dd>
+        <dt>Last scan</dt><dd id="lastScan">— NONE —</dd>
+      </dl>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Axial Slice <span class="tag" id="sliceIdx">Z-000</span></div>
+      <canvas id="slice"></canvas>
+      <div class="slice-meta"><span id="sliceLvl">LEVEL: —</span><span>DRAG RETICLE ↕</span></div>
+    </div>
+    <div class="panel log-panel">
+      <div class="ptitle">Diagnostic Log <button id="clearLog" style="padding:1px 6px">clr</button></div>
+      <div id="log" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- ===================== STAGE ===================== -->
+  <section class="panel stage">
+    <div class="toolbar">
+      <span class="lbl">LAYERS</span>
+      <button data-layer="skin" class="on" title="1">Dermal</button>
+      <button data-layer="skeleton" class="on" title="2">Skeletal</button>
+      <button data-layer="organs" class="on" title="3">Organs</button>
+      <button data-layer="vasc" class="on" title="4">Vascular</button>
+      <button data-layer="nerve" title="5">Neural</button>
+      <span class="spacer"></span>
+      <button id="scanBtn" class="primary" title="S">▶ Full Body Scan</button>
+    </div>
+    <div class="stage-status" id="stageStatus">Standing by — select a region or run a scan</div>
+
+    <svg id="figureSvg" viewBox="0 0 400 920" preserveAspectRatio="xMidYMid meet" aria-label="Holographic body scan">
+      <defs>
+        <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2.2" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <linearGradient id="beamGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--line)" stop-opacity="0"/>
+          <stop offset="1" stop-color="var(--line)" stop-opacity=".35"/>
+        </linearGradient>
+        <clipPath id="bodyClip"><path id="bodyClipPath"/></clipPath>
+      </defs>
+
+      <g id="figure">
+        <g id="layer-skin">
+          <path id="bodyPath" class="skin-fill"/>
+          <g class="mesh" clip-path="url(#bodyClip)" id="mesh"></g>
+        </g>
+
+        <g id="layer-skeleton">
+          <g id="skeleton" class="organ" data-organ="skeletal">
+            <g id="boneR">
+              <!-- ribs generated -->
+              <g id="ribs"></g>
+              <path class="bone" stroke-width="3" d="M204,152 C222,150 244,158 268,162"/>
+              <path class="bone" stroke-width="7" d="M278,178 C286,240 290,300 293,352"/>
+              <path class="bone" stroke-width="3.5" d="M294,362 C300,400 308,440 316,474"/>
+              <path class="bone" stroke-width="3.5" d="M301,360 C308,398 318,436 326,470"/>
+              <path class="bone" stroke-width="2" d="M318,482 L322,512 M324,482 L330,516 M329,480 L336,510 M314,482 L312,500"/>
+              <path class="bone-fill" d="M202,452 C214,440 236,436 252,442 C262,456 258,476 244,488 C232,494 222,492 214,502 C208,494 204,484 202,474 Z"/>
+              <circle cx="276" cy="174" r="7" class="bone-fill"/>
+              <path class="bone" stroke-width="8" d="M234,492 C236,560 236,620 236,664"/>
+              <circle cx="236" cy="678" r="6" class="bone-fill"/>
+              <path class="bone" stroke-width="6" d="M234,692 C234,750 233,800 232,846"/>
+              <path class="bone" stroke-width="2.5" d="M244,694 C244,750 242,800 240,844"/>
+              <path class="bone" stroke-width="3" d="M230,856 L236,876 L246,886 M238,858 L244,884"/>
+              <path class="bone" stroke-width="2" d="M180,88 C184,104 192,112 200,113"/>
+            </g>
+            <use href="#boneR" transform="translate(400,0) scale(-1,1)"/>
+            <ellipse class="bone" stroke-width="3" cx="200" cy="62" rx="31" ry="40"/>
+            <ellipse class="bone-fill" cx="188" cy="70" rx="6" ry="5" opacity=".25"/>
+            <ellipse class="bone-fill" cx="212" cy="70" rx="6" ry="5" opacity=".25"/>
+            <g id="spine"></g>
+            <rect class="bone-fill" x="196" y="166" width="8" height="70" rx="3"/>
+          </g>
+        </g>
+
+        <g id="layer-vasc" class="vasc">
+          <g id="vascR">
+            <path d="M204,226 C206,180 210,130 212,92"/>
+            <path d="M206,228 C232,200 268,176 284,204 C294,262 304,360 318,470 L330,508"/>
+            <path d="M201,468 C214,482 226,500 230,560 C236,640 236,760 234,852"/>
+            <path d="M201,366 L222,364"/>
+            <path d="M212,92 C224,80 226,60 216,40"/>
+          </g>
+          <use href="#vascR" transform="translate(400,0) scale(-1,1)"/>
+          <path d="M212,250 C214,230 206,220 200,222 C197,240 200,300 201,470" style="stroke-width:3"/>
+        </g>
+
+        <g id="layer-nerve" class="nerve layer-hidden">
+          <g id="nerveR">
+            <path d="M200,190 C232,188 270,182 290,222 C300,300 310,400 324,500"/>
+            <path d="M200,470 C212,500 222,560 226,640 C230,720 230,800 230,862"/>
+            <path d="M200,230 C214,232 236,240 252,250"/><path d="M200,270 C214,272 236,280 252,290"/>
+            <path d="M200,310 C214,312 236,318 248,328"/><path d="M200,400 C212,404 228,414 236,426"/>
+          </g>
+          <use href="#nerveR" transform="translate(400,0) scale(-1,1)"/>
+          <path class="cord" d="M200,92 L200,480"/>
+        </g>
+
+        <g id="layer-organs">
+          <g class="organ" data-organ="brain" id="o-brain">
+            <ellipse class="of" cx="200" cy="56" rx="25" ry="27"/>
+            <path class="ol" d="M200,30 L200,82 M184,40 q6,6 0,12 t0,12 t0,12 M216,40 q-6,6 0,12 t0,12 t0,12 M190,34 q4,10 -2,18 M210,34 q-4,10 2,18 M180,60 q8,2 12,10 M220,60 q-8,2 -12,10"/>
+          </g>
+          <g class="organ" data-organ="lungs" id="o-lungs">
+            <path class="ol" d="M200,118 L200,182 M200,182 C196,188 190,192 186,200 M200,182 C204,188 210,192 214,200"/>
+            <path id="lungL" class="of" d="M194,180 C182,174 166,186 160,214 C154,244 154,282 160,302 C168,312 186,306 194,296 C197,260 197,220 194,180 Z"/>
+            <use href="#lungL" transform="translate(400,0) scale(-1,1)"/>
+            <path class="ol" d="M176,214 L186,230 M170,250 L184,262 M174,278 L188,286 M224,214 L214,230 M230,250 L216,262 M226,278 L212,286"/>
+          </g>
+          <g class="organ" data-organ="heart" id="o-heart">
+            <path class="of" d="M208,236 C220,226 238,232 236,250 C234,266 218,278 206,288 C200,276 196,262 198,250 C199,242 203,238 208,236 Z"/>
+            <path class="ol" d="M206,244 C214,252 220,262 214,276 M222,236 C224,248 228,256 234,258"/>
+          </g>
+          <g class="organ" data-organ="liver" id="o-liver">
+            <path class="of" d="M158,306 C170,298 206,298 226,306 C232,312 222,320 208,326 C190,336 172,346 162,340 C154,330 154,316 158,306 Z"/>
+            <path class="ol" d="M190,304 C188,318 182,330 176,340"/>
+          </g>
+          <g class="organ" data-organ="stomach" id="o-stomach">
+            <path class="of" d="M222,312 C236,306 250,316 246,334 C244,350 230,358 214,352 C206,348 208,338 216,336 C228,334 230,324 222,312 Z"/>
+          </g>
+          <g class="organ" data-organ="kidneys" id="o-kidneys">
+            <path id="kidL" class="of" d="M176,350 C166,350 162,364 164,374 C166,384 176,388 182,380 C178,372 178,362 182,356 C181,352 179,350 176,350 Z"/>
+            <use href="#kidL" transform="translate(400,0) scale(-1,1)"/>
+          </g>
+          <g class="organ" data-organ="intestines" id="o-intestines">
+            <path class="hit" d="M168,380 L232,380 L234,440 L166,440 Z"/>
+            <path class="of" style="fill-opacity:.35" d="M170,382 C166,404 168,430 186,440 C200,444 214,444 228,438 C238,426 236,398 230,382 C214,376 186,376 170,382 Z"/>
+            <path class="ol" d="M180,394 q6,-8 12,0 t12,0 t12,0 t12,0 M178,406 q6,8 12,0 t12,0 t12,0 t12,0 t6,0 M180,418 q6,-8 12,0 t12,0 t12,0 t12,0 M184,430 q6,8 12,0 t12,0 t12,0"/>
+          </g>
+          <g class="organ" data-organ="pelvic" id="o-pelvic">
+            <path class="of" d="M188,456 C188,447 212,447 212,456 C212,470 206,478 200,481 C194,478 188,470 188,456 Z"/>
+            <path class="ol" d="M190,452 C184,446 178,448 174,454 M210,452 C216,446 222,448 226,454"/>
+            <circle class="of" cx="174" cy="458" r="4.5"/><circle class="of" cx="226" cy="458" r="4.5"/>
+          </g>
+        </g>
+        <g id="markers"></g>
+      </g>
+
+      <!-- overlays (not part of zoomed figure) -->
+      <g id="beam" style="display:none">
+        <rect id="beamRect" x="0" y="0" width="400" height="60" fill="url(#beamGrad)"/>
+        <line id="beamLine" class="beam-line" x1="0" x2="400" y1="60" y2="60"/>
+      </g>
+      <g id="rulerV" class="ruler"></g>
+      <g id="rulerH" class="ruler"></g>
+      <g id="reticle">
+        <rect id="retBox" class="reticle-box"/>
+        <path id="retCorners" class="reticle-corner"/>
+        <rect id="retHandle" class="reticle-handle" width="22" height="22"/>
+        <text id="retText" class="rtext"></text>
+      </g>
+    </svg>
+  </section>
+
+  <!-- ===================== RIGHT ===================== -->
+  <section class="col right">
+    <div class="panel">
+      <div class="ptitle">Monitor 002 · Optical Zoom <span class="tag">×3.4</span></div>
+      <div class="zoom-wrap">
+        <svg id="zoomSvg" preserveAspectRatio="xMidYMid slice"><use href="#figure"/></svg>
+      </div>
+    </div>
+    <div class="panel detail">
+      <div class="ptitle">Regional Analysis <span class="tag" id="detailTag">—</span></div>
+      <div class="detail-body" id="detail"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Monitor 003 · Neural Activity <span class="tag" id="neuralTag">SYNC 94%</span></div>
+      <canvas id="neural"></canvas>
+    </div>
+  </section>
+
+  <!-- ===================== VITALS ===================== -->
+  <section class="vitals" id="vitals">
+    <div class="panel wave">
+      <div class="ptitle">ECG · Lead II</div>
+      <div class="bignum"><span id="hrNum">72</span><small>BPM</small></div>
+      <canvas id="ecg"></canvas>
+    </div>
+    <div class="panel wave">
+      <div class="ptitle"><span>Ventilator: <span style="color:var(--ok)">ON</span></span></div>
+      <div class="bignum"><span id="rrNum">14</span><small>BR/MIN</small></div>
+      <canvas id="resp"></canvas>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Hemodynamics</div>
+      <div class="stat"><span>SpO₂ %</span><b id="spo2">98</b></div>
+      <div class="stat"><span>NIBP</span><b id="bp">118/76</b></div>
+      <div class="stat"><span>TEMP °C</span><b id="temp">36.8</b></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Brain Activity · μV</div>
+      <div class="grid-nums" id="gridNums"></div>
+    </div>
+    <div class="panel ctrl">
+      <div class="ptitle">Life-Support Override</div>
+      <label>HEART <input type="range" id="hrIn" min="30" max="190" value="72"><span id="hrVal">72</span></label>
+      <label>BREATHS <input type="range" id="rrIn" min="2" max="40" value="14"><span id="rrVal">14</span></label>
+      <div class="row">
+        <button id="bypassBtn">Alarm Bypass</button>
+        <button id="soundBtn">Sound: Off</button>
+      </div>
+      <div class="alarm-text" id="alarmText"></div>
+    </div>
+  </section>
+</div>
+
+<div class="tooltip" id="tip"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="help" id="help">
+  <div class="panel">
+    <div class="ptitle">Operator Controls <span class="tag">ESC</span></div>
+    <table>
+      <tr><td><kbd>Click</kbd></td><td>Select an organ / region for analysis</td></tr>
+      <tr><td><kbd>Drag</kbd></td><td>Move the targeting reticle (or click empty space)</td></tr>
+      <tr><td><kbd>← ↑ → ↓</kbd></td><td>Nudge reticle (hold <kbd>Shift</kbd> for ×5)</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>5</kbd></td><td>Toggle Dermal / Skeletal / Organs / Vascular / Neural</td></tr>
+      <tr><td><kbd>S</kbd></td><td>Run full body scan</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Cycle display mode (Holo / X-Ray / CRT-84)</td></tr>
+      <tr><td><kbd>B</kbd></td><td>Toggle audio alarm bypass</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This panel</td></tr>
+    </table>
+    <p style="font-size:11px;color:var(--text-dim);margin:10px 0 0">Push the life-support sliders out of range to trigger alarms. Run a scan to hunt for anomalies, then select the flagged organ to treat it. All data is fictional.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+  const svgEl = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  /* =========================================================
+     Body outline (right half traced, mirrored, Catmull-Rom smoothed)
+     ========================================================= */
+  const R = [
+    [200,18],[222,24],[235,45],[236,72],[230,96],[216,114],[213,138],[236,150],[268,158],[288,170],
+    [296,195],[298,240],[302,300],[306,350],[314,410],[322,460],[332,488],[336,512],[330,530],[320,528],
+    [314,505],[306,470],[294,415],[284,355],[276,300],[268,250],[262,230],[260,262],[256,300],[248,338],
+    [250,380],[262,420],[270,458],[270,500],[264,560],[256,620],[248,670],[246,700],[248,740],[244,800],
+    [236,846],[238,872],[246,890],[226,894],[214,884],[212,846],[210,790],[208,730],[206,670],[204,600],
+    [202,530],[200,508]
+  ];
+  const ctrlPts = [...R, ...R.slice(1, -1).reverse().map(([x, y]) => [400 - x, y])];
+  function catmull(P, steps) {
+    const out = [], n = P.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
+      for (let s = 0; s < steps; s++) {
+        const t = s / steps, t2 = t * t, t3 = t2 * t;
+        const f = (a, b, c, d) => 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+        out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+      }
+    }
+    return out;
+  }
+  const outline = catmull(ctrlPts, 10);
+  const bodyD = 'M' + outline.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L') + 'Z';
+  $('#bodyPath').setAttribute('d', bodyD);
+  $('#bodyClipPath').setAttribute('d', bodyD);
+
+  function crossings(y) {
+    const xs = [];
+    for (let i = 0; i < outline.length; i++) {
+      const a = outline[i], b = outline[(i + 1) % outline.length];
+      if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) {
+        xs.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+      }
+    }
+    xs.sort((p, q) => p - q);
+    const iv = [];
+    for (let i = 0; i + 1 < xs.length; i += 2) iv.push([xs[i], xs[i + 1]]);
+    return iv;
+  }
+
+  // contour mesh
+  const mesh = $('#mesh');
+  for (let y = 14; y < 900; y += 9) svgEl('line', { x1: 0, x2: 400, y1: y, y2: y }, mesh);
+  for (let x = 104; x < 300; x += 16) svgEl('line', { x1: x, x2: x, y1: 0, y2: 920 }, mesh);
+
+  // ribs + spine
+  const ribs = $('#ribs');
+  [30, 38, 44, 48, 50, 50, 48, 45, 38, 30].forEach((w, i) => {
+    const y = 172 + i * 13, x = 200 + w;
+    const d = i < 8
+      ? `M203,${y} C${200 + w * 0.6},${y - 8} ${x},${y - 2} ${x},${y + 12} C${x - 2},${y + 22} ${200 + w * 0.7},${y + 26} ${200 + w * 0.42},${y + 22}`
+      : `M203,${y} C${200 + w * 0.6},${y - 6} ${x},${y} ${x - 2},${y + 14}`;
+    svgEl('path', { d, class: 'bone', 'stroke-width': 2.2 }, ribs);
+  });
+  const spine = $('#spine');
+  for (let y = 108; y < 470; y += 11) {
+    const hw = y < 160 ? 5 : y < 340 ? 6 : 8;
+    svgEl('rect', { x: 200 - hw, y, width: hw * 2, height: 8, rx: 2, class: 'bone-fill' }, spine);
+  }
+
+  // Replace mirrored <use> clones inside the figure with real elements so
+  // descendant CSS selectors (layer colours, selection states) apply to both halves.
+  document.querySelectorAll('#figure use').forEach(u => {
+    const src = document.getElementById(u.getAttribute('href').slice(1));
+    const c = src.cloneNode(true);
+    c.removeAttribute('id');
+    c.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+    const prev = c.getAttribute('transform');
+    c.setAttribute('transform', u.getAttribute('transform') + (prev ? ' ' + prev : ''));
+    u.replaceWith(c);
+  });
+
+
+  /* =========================================================
+     Organ database
+     ========================================================= */
+  const ORGANS = {
+    brain: { name: 'Cerebral Cortex', sys: 'Central nervous system',
+      metrics: [['α-rhythm', 10.2, 'Hz', 6, 14, 1], ['Synaptic load', 62, '%', 0, 100, 0], ['Intracranial P.', 11, 'mmHg', 0, 25, 0], ['Lace sync', 94, '%', 0, 100, 0]],
+      notes: 'Class II neural lace seated in the parietal cortex. Interface latency within tolerance.',
+      anomalies: ['Unclassified resonance at 41.7 Hz in the left temporal lobe', 'Micro-glial cluster forming around a lace filament'] },
+    lungs: { name: 'Pulmonary System', sys: 'Respiratory',
+      metrics: [['Respiration', 14, '/min', 0, 40, 0], ['Lung capacity', 100, '%', 0, 100, 0], ['O₂ exchange', 97, '%', 0, 100, 0], ['Tidal volume', 480, 'mL', 0, 800, 0]],
+      notes: 'Both lungs fully inflated. Alveolar exchange is optimal for the current atmospheric mix.',
+      anomalies: ['Crystalline particulate deposit, 3.2 mm, lower lobe', 'Spore colony signature in the bronchial lining'] },
+    heart: { name: 'Myocardium', sys: 'Cardiovascular',
+      metrics: [['Heart rate', 72, 'bpm', 0, 200, 0], ['Ejection fraction', 63, '%', 0, 100, 0], ['Cardiac output', 5.4, 'L/min', 0, 10, 1], ['Wall stress', 31, 'kPa', 0, 60, 0]],
+      notes: 'Sinus rhythm. Four chambers synchronous. No valve regurgitation detected.',
+      anomalies: ['Arrhythmogenic micro-node in the sinoatrial tissue', 'Dormant nanite aggregate on the mitral valve'] },
+    liver: { name: 'Hepatic Lobes', sys: 'Digestive / Metabolic',
+      metrics: [['Toxin clearance', 91, '%', 0, 100, 0], ['ALT enzyme', 24, 'U/L', 0, 80, 0], ['Glycogen store', 78, '%', 0, 100, 0], ['Bile flow', 0.6, 'mL/min', 0, 1.5, 2]],
+      notes: 'Regeneration index nominal. Metabolising trace compounds from the last stim-ration.',
+      anomalies: ['Unknown xenocompound accumulating in hepatocytes', 'Fibrotic lattice of non-human origin'] },
+    stomach: { name: 'Gastric Chamber', sys: 'Digestive',
+      metrics: [['pH', 2.1, '', 0, 7, 1], ['Motility', 3, 'cpm', 0, 6, 0], ['Fill level', 22, '%', 0, 100, 0]],
+      notes: 'Fasting state. Mucosal lining intact.',
+      anomalies: ['Bio-luminescent mucosal patch, origin unknown'] },
+    kidneys: { name: 'Renal Pair', sys: 'Urinary / Filtration',
+      metrics: [['GFR', 104, 'mL/min', 0, 150, 0], ['Filtration eff.', 96, '%', 0, 100, 0], ['Creatinine', 0.8, 'mg/dL', 0, 2, 1]],
+      notes: 'Bilateral perfusion symmetrical. Filtering residual contrast agent.',
+      anomalies: ['Metallic micro-calculus, left kidney (non-native alloy)'] },
+    intestines: { name: 'Intestinal Tract', sys: 'Digestive',
+      metrics: [['Microbiome div.', 8.4, 'idx', 0, 10, 1], ['Absorption', 88, '%', 0, 100, 0], ['Peristalsis', 11, 'cpm', 0, 20, 0]],
+      notes: 'Engineered probiotic strain HM-12 colonising as expected.',
+      anomalies: ['Rogue bacterial strain outcompeting HM-12'] },
+    pelvic: { name: 'Uterus & Ovaries', sys: 'Reproductive / Endocrine',
+      metrics: [['Estradiol', 142, 'pg/mL', 0, 400, 0], ['Progesterone', 9.4, 'ng/mL', 0, 25, 1], ['Cycle day', 17, 'd', 0, 28, 0]],
+      notes: 'Luteal phase. Endocrine output consistent with baseline genome profile.',
+      anomalies: ['Hormonal oscillation outside the genome baseline'] },
+    skeletal: { name: 'Skeletal Frame', sys: 'Musculoskeletal',
+      metrics: [['Bone density', 1.12, 'g/cm²', 0, 1.6, 2], ['Calcium', 9.6, 'mg/dL', 0, 12, 1], ['Micro-fracture', 2, 'sites', 0, 20, 0]],
+      notes: '206 bones accounted for. Titanium pin in left radius (old injury).',
+      anomalies: ['Hairline fracture with abnormal accelerated healing'] }
+  };
+  const organEls = {};
+  $$('.organ').forEach(g => { organEls[g.dataset.organ] = g; });
+  for (const id in ORGANS) {
+    const o = ORGANS[id];
+    o.id = id; o.status = 'idle'; o.anomaly = null; o.history = [];
+    o.vals = o.metrics.map(m => m[1]);
+  }
+
+  /* =========================================================
+     State
+     ========================================================= */
+  const state = {
+    hr: 72, rr: 14, beat: 0, resp: 0, pulse: 0,
+    bypass: false, sound: false, alarms: [],
+    ret: { x: 200, y: 250, s: 90 },
+    selected: null,
+    scan: null,
+    t0: performance.now(),
+    sliceDirty: true,
+    mode: 'holo',
+    colors: {}
+  };
+
+  /* =========================================================
+     Logging
+     ========================================================= */
+  const logEl = $('#log');
+  function stamp() {
+    const s = (performance.now() - state.t0) / 1000;
+    return 'T+' + s.toFixed(1).padStart(6, '0');
+  }
+  function log(msg, cls = '') {
+    const d = document.createElement('div');
+    d.className = 'ln';
+    d.innerHTML = `<span class="ts">${stamp()}</span> <span class="${cls}"></span>`;
+    d.lastChild.textContent = msg;
+    logEl.appendChild(d);
+    while (logEl.children.length > 200) logEl.firstChild.remove();
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  $('#clearLog').onclick = () => { logEl.innerHTML = ''; };
+
+  /* =========================================================
+     Audio
+     ========================================================= */
+  let actx = null;
+  function beep(freq = 880, dur = 0.06, vol = 0.05, type = 'sine') {
+    if (!state.sound) return;
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur + 0.02);
+  }
+
+  /* =========================================================
+     Rulers + reticle
+     ========================================================= */
+  const rulerV = $('#rulerV'), rulerH = $('#rulerH');
+  svgEl('line', { x1: 0, x2: 0, y1: 0, y2: 920 }, rulerV);
+  for (let y = 0; y <= 920; y += 10) {
+    const m = y % 50 === 0;
+    svgEl('line', { x1: m ? -9 : -5, x2: m ? 9 : 5, y1: y, y2: y, class: m ? 'major' : '' }, rulerV);
+  }
+  svgEl('line', { x1: 0, x2: 400, y1: 0, y2: 0 }, rulerH);
+  for (let x = 0; x <= 400; x += 6) {
+    const m = x % 30 === 0;
+    svgEl('line', { x1: x, x2: x, y1: m ? -12 : -6, y2: m ? 12 : 6, class: m ? 'major' : '' }, rulerH);
+  }
+
+  function updateReticle() {
+    const { x, y, s } = state.ret, h = s / 2, c = 14;
+    rulerV.setAttribute('transform', `translate(${x},0)`);
+    rulerH.setAttribute('transform', `translate(0,${y})`);
+    const box = $('#retBox');
+    box.setAttribute('x', x - h); box.setAttribute('y', y - h);
+    box.setAttribute('width', s); box.setAttribute('height', s);
+    const a = h + 18;
+    $('#retCorners').setAttribute('d',
+      `M${x - a},${y - a + c}V${y - a}H${x - a + c} M${x + a - c},${y - a}H${x + a}V${y - a + c} ` +
+      `M${x - a},${y + a - c}V${y + a}H${x - a + c} M${x + a - c},${y + a}H${x + a}V${y + a - c}`);
+    const hd = $('#retHandle');
+    hd.setAttribute('x', x - 11); hd.setAttribute('y', y - 11);
+    const t = $('#retText');
+    t.setAttribute('x', x + a + 4); t.setAttribute('y', y - a + 8);
+    t.textContent = `X ${((x - 200) / 400 * 1.71 * 2.34).toFixed(2)}  Z ${(1.71 - y / 920 * 1.71).toFixed(2)}m`;
+    $('#zoomSvg').setAttribute('viewBox', `${x - h} ${y - h} ${s} ${s}`);
+    const z = Math.round(y / 920 * 512);
+    $('#sliceIdx').textContent = 'Z-' + String(z).padStart(3, '0');
+    $('#sliceLvl').textContent = 'LEVEL: ' + regionAt(y);
+    state.sliceDirty = true;
+  }
+  function regionAt(y) {
+    if (y < 115) return 'CRANIAL';
+    if (y < 150) return 'CERVICAL';
+    if (y < 300) return 'THORACIC';
+    if (y < 440) return 'ABDOMINAL';
+    if (y < 510) return 'PELVIC';
+    if (y < 690) return 'FEMORAL';
+    return 'CRURAL / PEDAL';
+  }
+  function moveReticle(x, y) {
+    state.ret.x = clamp(x, 40, 360);
+    state.ret.y = clamp(y, 30, 890);
+    updateReticle();
+  }
+
+  const fsvg = $('#figureSvg');
+  function toSvg(evt) {
+    const pt = fsvg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(fsvg.getScreenCTM().inverse());
+  }
+  let dragging = false;
+  $('#retHandle').addEventListener('pointerdown', (e) => {
+    dragging = true; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  fsvg.addEventListener('pointermove', (e) => {
+    if (dragging) { const p = toSvg(e); moveReticle(p.x, p.y); }
+  });
+  fsvg.addEventListener('pointerup', () => { dragging = false; });
+  fsvg.addEventListener('click', (e) => {
+    if (e.target.closest('.organ') || e.target.closest('.marker') || e.target.id === 'retHandle') return;
+    const p = toSvg(e); moveReticle(p.x, p.y);
+  });
+
+  /* =========================================================
+     Organ interaction
+     ========================================================= */
+  const tip = $('#tip');
+  $$('.organ').forEach(g => {
+    const id = g.dataset.organ;
+    g.addEventListener('click', (e) => { e.stopPropagation(); selectOrgan(id, true); });
+    g.addEventListener('pointerenter', () => { tip.style.display = 'block'; tip.textContent = ORGANS[id].name; });
+    g.addEventListener('pointermove', (e) => { tip.style.left = e.clientX + 14 + 'px'; tip.style.top = e.clientY + 10 + 'px'; });
+    g.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+  });
+
+  let bboxes = {};
+  function computeBoxes() {
+    for (const id in organEls) {
+      const b = organEls[id].getBBox();
+      bboxes[id] = { x: b.x, y: b.y, w: b.width, h: b.height, cx: b.x + b.width / 2, cy: b.y + b.height / 2 };
+    }
+  }
+
+  function selectOrgan(id, moveRet) {
+    state.selected = id;
+    $$('.organ').forEach(g => g.classList.toggle('sel', g.dataset.organ === id));
+    if (moveRet && bboxes[id] && id !== 'skeletal') {
+      const b = bboxes[id];
+      state.ret.s = clamp(Math.max(b.w, b.h) + 24, 60, 160);
+      moveReticle(b.cx, b.cy);
+    } else if (moveRet && id === 'skeletal') {
+      state.ret.s = 120; moveReticle(200, 470);
+    }
+    const o = ORGANS[id];
+    if (moveRet) { log(`Region locked: ${o.name}`); beep(1320, 0.04, 0.04); }
+    renderDetail(true);
+  }
+
+  const detailEl = $('#detail');
+  function renderDetail(full) {
+    const id = state.selected;
+    if (!id) {
+      detailEl.innerHTML = '<div class="notes">No region selected. Click an organ on the hologram, or run a full body scan.</div>';
+      $('#detailTag').textContent = '—';
+      return;
+    }
+    const o = ORGANS[id];
+    const chip = o.anomaly && !o.anomaly.fixed ? '<span class="chip bad">ANOMALY</span>'
+      : o.status === 'scanned' ? '<span class="chip ok">NOMINAL · VERIFIED</span>'
+      : '<span class="chip idle">LIVE TELEMETRY · UNVERIFIED</span>';
+    $('#detailTag').textContent = id.toUpperCase().slice(0, 6);
+    if (full) {
+      detailEl.innerHTML = `
+        <div class="dname">${o.name}</div>
+        <div class="dsys">${o.sys}</div>
+        ${chip}
+        <div id="metrics">${o.metrics.map((m, i) => `
+          <div class="metric"><span>${m[0]}</span><span class="v" id="mv${i}"></span></div>
+          <div class="bar"><i id="mb${i}"></i></div>`).join('')}
+        </div>
+        <canvas id="spark"></canvas>
+        <div class="notes">${o.notes}</div>
+        ${o.anomaly ? `<div class="anom-box">${o.anomaly.fixed ? '✔ Resolved: ' : '⚠ '}${o.anomaly.text}
+          ${o.anomaly.fixed ? '' : `<div style="color:var(--text-dim);margin-top:4px">Severity ${o.anomaly.sev}/5 · Confidence ${o.anomaly.conf}%</div>
+          <button class="primary" id="treatBtn">Deploy Nanite Repair Swarm</button>`}</div>` : ''}
+      `;
+      const tb = $('#treatBtn');
+      if (tb) tb.onclick = () => treat(id);
+    }
+    updateMetricsUI();
+  }
+  function updateMetricsUI() {
+    const id = state.selected; if (!id) return;
+    const o = ORGANS[id];
+    o.metrics.forEach((m, i) => {
+      const v = o.vals[i], ve = $('#mv' + i), be = $('#mb' + i);
+      if (!ve) return;
+      ve.textContent = v.toFixed(m[5]) + (m[2] ? ' ' + m[2] : '');
+      const f = clamp((v - m[3]) / (m[4] - m[3]), 0, 1);
+      be.style.width = (f * 100).toFixed(1) + '%';
+      be.classList.toggle('hi', f > 0.85 || (o.anomaly && !o.anomaly.fixed && i === 0));
+    });
+    drawSpark(o);
+  }
+  function drawSpark(o) {
+    const c = $('#spark'); if (!c) return;
+    const ctx = fitCanvas(c);
+    const W = c.width, H = c.height, h = o.history;
+    ctx.clearRect(0, 0, W, H);
+    if (h.length < 2) return;
+    const lo = Math.min(...h), hi = Math.max(...h), span = (hi - lo) || 1;
+    ctx.strokeStyle = state.colors.line; ctx.lineWidth = 1.5 * devicePixelRatio;
+    ctx.beginPath();
+    h.forEach((v, i) => {
+      const x = i / (h.length - 1) * W, y = H - 4 - (v - lo) / span * (H - 8);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = state.colors.dim; ctx.font = `${9 * devicePixelRatio}px monospace`;
+    ctx.fillText(o.metrics[0][0].toUpperCase() + ' · 30s TREND', 4, 11 * devicePixelRatio);
+  }
+
+  function tickMetrics() {
+    for (const id in ORGANS) {
+      const o = ORGANS[id];
+      o.metrics.forEach((m, i) => {
+        let base = m[1];
+        if (id === 'heart' && i === 0) base = state.hr;
+        if (id === 'heart' && i === 2) base = 5.4 * state.hr / 72 * (state.hr > 150 ? 0.75 : 1);
+        if (id === 'lungs' && i === 0) base = state.rr;
+        if (id === 'lungs' && i === 2) base = vitals.spo2;
+        if (id === 'brain' && i === 1) base = 62 + (state.hr - 72) * 0.2;
+        if (o.anomaly && !o.anomaly.fixed && i === 0) base = base * (id === 'stomach' ? 1.8 : 1.22);
+        const jitter = (m[4] - m[3]) * 0.006;
+        o.vals[i] = clamp(o.vals[i] + (base - o.vals[i]) * 0.3 + rnd(-jitter, jitter), m[3], m[4]);
+      });
+      o.history.push(o.vals[0]);
+      if (o.history.length > 120) o.history.shift();
+    }
+    updateMetricsUI();
+  }
+
+  /* =========================================================
+     Layers + modes
+     ========================================================= */
+  const layerKeys = ['skin', 'skeleton', 'organs', 'vasc', 'nerve'];
+  function toggleLayer(k) {
+    const g = $('#layer-' + k), b = $(`[data-layer="${k}"]`);
+    const hidden = g.classList.toggle('layer-hidden');
+    b.classList.toggle('on', !hidden);
+    state.sliceDirty = true;
+  }
+  $$('[data-layer]').forEach(b => b.onclick = () => toggleLayer(b.dataset.layer));
+
+  const MODES = ['holo', 'xray', 'crt'];
+  function setMode(m) {
+    state.mode = m;
+    document.body.className = 'mode-' + m;
+    $$('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    readColors();
+    state.sliceDirty = true;
+    ['ecg', 'resp'].forEach(id => { waves[id].clear = true; });
+    log(`Display profile → ${m === 'crt' ? 'CRT-84 LEGACY' : m.toUpperCase()}`);
+  }
+  $$('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  function readColors() {
+    const cs = getComputedStyle(document.body);
+    const g = (v) => cs.getPropertyValue(v).trim();
+    state.colors = { line: g('--line'), dim: g('--text-dim'), accent: g('--accent'), warn: g('--warn'), ok: g('--ok'), bg: g('--bg'), text: g('--text') };
+  }
+
+  /* =========================================================
+     Scan sequence
+     ========================================================= */
+  const scanBtn = $('#scanBtn'), status = $('#stageStatus');
+  const SCAN_MS = 7000;
+  function startScan() {
+    if (state.scan) return;
+    $('#markers').innerHTML = '';
+    for (const id in ORGANS) {
+      const o = ORGANS[id];
+      o.status = 'idle'; o.anomaly = null;
+      organEls[id].classList.remove('scanned', 'anom');
+    }
+    const ids = Object.keys(ORGANS);
+    const count = Math.random() < 0.15 ? 0 : Math.random() < 0.75 ? 1 : 2;
+    const pick = [];
+    while (pick.length < count) { const k = ids[Math.floor(Math.random() * ids.length)]; if (!pick.includes(k)) pick.push(k); }
+    state.scan = { start: performance.now(), pending: new Set(ids), planned: pick, found: [] };
+    scanBtn.disabled = true;
+    $('#beam').style.display = '';
+    log('Initiating full-body tomographic sweep…', 'warn');
+    beep(440, 0.25, 0.05, 'triangle');
+    renderDetail(true);
+  }
+  scanBtn.onclick = startScan;
+
+  function stepScan(now) {
+    const sc = state.scan; if (!sc) return;
+    const p = clamp((now - sc.start) / SCAN_MS, 0, 1);
+    const y = p * 920;
+    $('#beamRect').setAttribute('y', y - 60);
+    $('#beamLine').setAttribute('y1', y); $('#beamLine').setAttribute('y2', y);
+    status.innerHTML = `Scan processing… <span class="pct">${Math.round(p * 100)}%</span>`;
+    for (const id of [...sc.pending]) {
+      const b = bboxes[id];
+      const trigger = id === 'skeletal' ? 880 : b.cy;
+      if (y >= trigger) {
+        sc.pending.delete(id);
+        const o = ORGANS[id];
+        o.status = 'scanned';
+        if (sc.planned.includes(id)) {
+          o.anomaly = { text: o.anomalies[Math.floor(Math.random() * o.anomalies.length)], sev: 2 + Math.floor(Math.random() * 3), conf: 70 + Math.floor(Math.random() * 29), fixed: false };
+          organEls[id].classList.add('anom');
+          sc.found.push(id);
+          addMarker(id);
+          log(`✖ ${o.name}: ${o.anomaly.text}`, 'bad');
+          beep(220, 0.18, 0.06, 'square');
+        } else {
+          organEls[id].classList.add('scanned');
+          log(`✓ ${o.name} — nominal`, 'good');
+          beep(1760, 0.03, 0.025);
+        }
+        if (state.selected === id) renderDetail(true);
+      }
+    }
+    if (p >= 1) finishScan();
+  }
+  function finishScan() {
+    const sc = state.scan; state.scan = null;
+    scanBtn.disabled = false;
+    $('#beam').style.display = 'none';
+    const n = sc.found.length;
+    $('#lastScan').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (n) {
+      status.innerHTML = `<span class="pct">${n} ANOMAL${n > 1 ? 'IES' : 'Y'} DETECTED</span> — select the flagged region`;
+      log(`Sweep complete. ${n} anomal${n > 1 ? 'ies' : 'y'} require attention.`, 'bad');
+      selectOrgan(sc.found[0], true);
+    } else {
+      status.textContent = 'Sweep complete — subject within all baseline parameters';
+      log('Sweep complete. No anomalies found.', 'good');
+    }
+  }
+  function addMarker(id) {
+    const b = bboxes[id];
+    const mx = id === 'skeletal' ? 236 : b.cx + rnd(-b.w * 0.18, b.w * 0.18);
+    const my = id === 'skeletal' ? 600 : b.cy + rnd(-b.h * 0.18, b.h * 0.18);
+    const g = svgEl('g', { class: 'marker', 'data-organ': id, transform: `translate(${mx},${my})` }, $('#markers'));
+    svgEl('circle', { r: 3, class: 'core' }, g);
+    const ring = svgEl('circle', { r: 8 }, g);
+    svgEl('animate', { attributeName: 'r', values: '5;16;5', dur: '1.4s', repeatCount: 'indefinite' }, ring);
+    svgEl('animate', { attributeName: 'opacity', values: '1;0;1', dur: '1.4s', repeatCount: 'indefinite' }, ring);
+    g.addEventListener('click', (e) => { e.stopPropagation(); selectOrgan(id, true); });
+  }
+  function treat(id) {
+    const o = ORGANS[id]; if (!o.anomaly || o.anomaly.fixed) return;
+    const btn = $('#treatBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Swarm deploying…'; }
+    log(`Nanite swarm dispatched → ${o.name}`, 'warn');
+    beep(660, 0.3, 0.04, 'sawtooth');
+    const m = $(`.marker[data-organ="${id}"]`);
+    if (m) m.querySelectorAll('circle').forEach(c => c.style.stroke = 'var(--ok)');
+    setTimeout(() => {
+      o.anomaly.fixed = true;
+      organEls[id].classList.remove('anom'); organEls[id].classList.add('scanned');
+      if (m) m.remove();
+      log(`Anomaly neutralised in ${o.name}. Tissue integrity restored.`, 'good');
+      beep(1320, 0.08, 0.05); setTimeout(() => beep(1760, 0.1, 0.05), 90);
+      if (state.selected === id) renderDetail(true);
+      const left = Object.values(ORGANS).filter(x => x.anomaly && !x.anomaly.fixed).length;
+      status.textContent = left ? `${left} anomaly remaining` : 'All anomalies resolved — subject stable';
+    }, 2200);
+  }
+
+  /* =========================================================
+     Canvas helpers
+     ========================================================= */
+  function fitCanvas(c) {
+    const r = c.getBoundingClientRect(), d = devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c._resized = true; }
+    return c.getContext('2d');
+  }
+
+  /* ---------- Axial slice (CT-style cross-section at reticle Y) ---------- */
+  const sliceC = $('#slice');
+  let noiseTile = null;
+  function makeNoise() {
+    noiseTile = document.createElement('canvas');
+    noiseTile.width = noiseTile.height = 128;
+    const nctx = noiseTile.getContext('2d'), id = nctx.createImageData(128, 128);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = Math.random() * 255;
+      id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 26;
+    }
+    nctx.putImageData(id, 0, 0);
+  }
+  makeNoise();
+
+  function drawSlice() {
+    const ctx = fitCanvas(sliceC), W = sliceC.width, H = sliceC.height, d = devicePixelRatio || 1;
+    const y = state.ret.y;
+    const crt = state.mode === 'crt';
+    const tint = state.mode === 'holo' ? [140, 230, 255] : state.mode === 'xray' ? [215, 235, 255] : [90, 140, 255];
+    const col = (a, k = 1) => `rgba(${tint.map(c => Math.round(c * k)).join(',')},${a})`;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    const s = W / 300, ox = W / 2 - 200 * s, cy = H / 2;
+    const iv = crossings(y);
+    const organsOn = !$('#layer-organs').classList.contains('layer-hidden');
+    const bonesOn = !$('#layer-skeleton').classList.contains('layer-hidden');
+
+    iv.forEach(([a, b]) => {
+      const w = b - a, cx = ox + (a + b) / 2 * s, rx = w / 2 * s;
+      const torso = w > 60, ry = rx * (torso ? 0.66 : 0.92);
+      const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+      gr.addColorStop(0, col(0.38, 0.6)); gr.addColorStop(0.85, col(0.28, 0.5)); gr.addColorStop(1, col(0.75));
+      ctx.fillStyle = crt ? col(0.5) : gr;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = col(0.95); ctx.lineWidth = 1.5 * d; ctx.stroke();
+      // subcutaneous layer
+      ctx.strokeStyle = col(0.25); ctx.lineWidth = 3 * d;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.9, ry * 0.88, 0, 0, Math.PI * 2); ctx.stroke();
+
+      if (bonesOn) {
+        ctx.fillStyle = col(1); ctx.strokeStyle = col(1);
+        if (torso) {
+          if (y > 105 && y < 480) { // vertebra at the back
+            ctx.beginPath(); ctx.ellipse(ox + 200 * s, cy + ry * 0.62, 9 * d, 7 * d, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(ox + 200 * s, cy + ry * 0.62 + 2 * d, 2.5 * d, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = col(1);
+          }
+          if (y > 170 && y < 310) { // rib cage
+            ctx.lineWidth = 2.5 * d; ctx.setLineDash([10 * d, 6 * d]);
+            ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.8, ry * 0.78, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            if (y < 240) { ctx.fillRect(ox + 196 * s, cy - ry * 0.8, 8 * s, 5 * d); }
+          }
+          if (y > 440 && y < 505) { // pelvis wings
+            ctx.lineWidth = 4 * d;
+            [-1, 1].forEach(sg => { ctx.beginPath(); ctx.ellipse(ox + (200 + sg * 42) * s, cy + ry * 0.2, 24 * s, ry * 0.5, sg * 0.5, 0, Math.PI * 2); ctx.stroke(); });
+          }
+          if (y < 105 && y > 20) { // skull
+            ctx.lineWidth = 4 * d; ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.86, ry * 0.86, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+        } else if (y > 160) { // limb bone
+          ctx.beginPath(); ctx.arc(cx, cy, Math.max(2.5 * d, rx * 0.22), 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    });
+
+    if (organsOn) {
+      const blob = (id, cxs, rxs, ryk, fill, dy = 0) => {
+        const b = bboxes[id]; if (!b) return;
+        if (y < b.y || y > b.y + b.h) return;
+        const f = Math.sqrt(Math.max(0, 1 - ((y - b.cy) / (b.h / 2)) ** 2));
+        cxs.forEach(x => {
+          const r = rxs * s * (0.4 + 0.6 * f);
+          ctx.fillStyle = fill;
+          ctx.beginPath(); ctx.ellipse(ox + x * s, cy + dy * s, r, r * ryk, 0, 0, Math.PI * 2); ctx.fill();
+          if (ORGANS[id].anomaly && !ORGANS[id].anomaly.fixed) {
+            ctx.strokeStyle = state.colors.accent; ctx.lineWidth = 2 * d; ctx.stroke();
+          }
+        });
+      };
+      blob('brain', [200], 25, 0.8, col(0.55, 0.85));
+      blob('lungs', [176, 224], 20, 1.2, 'rgba(0,0,0,0.85)');
+      blob('heart', [216], 18, 0.9, col(0.7));
+      blob('liver', [186], 32, 0.7, col(0.55, 0.8));
+      blob('stomach', [230], 16, 0.8, col(0.45, 0.7), -6);
+      blob('kidneys', [174, 226], 9, 1, col(0.8), 14);
+      blob('intestines', [186, 200, 214], 11, 0.8, col(0.42, 0.75));
+      blob('pelvic', [200], 12, 0.9, col(0.6));
+      // airway lumen
+      if (y > 115 && y < 185) { ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(ox + 200 * s, cy - 6 * s, 5 * s, 0, Math.PI * 2); ctx.fill(); }
+    }
+
+    // grain + overlay
+    ctx.fillStyle = ctx.createPattern(noiseTile, 'repeat');
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = col(0.35); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+    ctx.fillStyle = col(0.9); ctx.font = `${10 * d}px monospace`;
+    ctx.fillText('R', 6 * d, cy - 4 * d); ctx.fillText('L', W - 12 * d, cy - 4 * d);
+    ctx.fillText('ANT', W / 2 + 4 * d, 12 * d); ctx.fillText('POST', W / 2 + 4 * d, H - 5 * d);
+    ctx.fillText(`W:400 L:40  ${iv.length ? '' : 'NO TISSUE'}`, 6 * d, H - 5 * d);
+  }
+
+  /* ---------- Scrolling waveforms ---------- */
+  const g = (p, c, w) => Math.exp(-0.5 * ((p - c) / w) ** 2);
+  const ecgFn = (p) => 0.12 * g(p, 0.16, 0.025) - 0.12 * g(p, 0.28, 0.009) + 1 * g(p, 0.31, 0.011) - 0.28 * g(p, 0.34, 0.01) + 0.28 * g(p, 0.56, 0.045);
+  const respFn = (p) => 0.5 - 0.5 * Math.cos(p * Math.PI * 2);
+  const waves = {
+    ecg: { el: $('#ecg'), x: 0, last: null, clear: true, speed: 110 },
+    resp: { el: $('#resp'), x: 0, last: null, clear: true, speed: 45 }
+  };
+  function drawWave(key, dt, value, color) {
+    const w = waves[key], c = w.el, ctx = fitCanvas(c), W = c.width, H = c.height, d = devicePixelRatio || 1;
+    if (w.clear || c._resized) { ctx.clearRect(0, 0, W, H); w.clear = false; c._resized = false; w.last = null; w.x = 0; drawGridBg(ctx, W, H); }
+    const nx = w.x + dt * w.speed * d;
+    const y = H * 0.82 - value * H * 0.62;
+    // erase ahead
+    ctx.clearRect(nx, 0, 14 * d, H);
+    drawGridBg(ctx, W, H, nx, 14 * d);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.8 * d; ctx.lineJoin = 'round';
+    if (state.mode !== 'xray') { ctx.shadowColor = color; ctx.shadowBlur = 6 * d; }
+    if (w.last) { ctx.beginPath(); ctx.moveTo(w.last[0], w.last[1]); ctx.lineTo(nx, y); ctx.stroke(); }
+    ctx.shadowBlur = 0;
+    w.last = [nx, y]; w.x = nx;
+    if (w.x > W) { w.x = 0; w.last = null; }
+  }
+  function drawGridBg(ctx, W, H, x0 = 0, ww = W) {
+    const d = devicePixelRatio || 1, step = 16 * d;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, 0, ww, H); ctx.clip();
+    ctx.strokeStyle = state.colors.dim; ctx.globalAlpha = 0.18; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = Math.floor(x0 / step) * step; x < x0 + ww; x += step) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); }
+    for (let y = 0; y < H; y += step) { ctx.moveTo(x0, y + .5); ctx.lineTo(x0 + ww, y + .5); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ---------- Neural point cloud ---------- */
+  const neuralC = $('#neural');
+  const npts = [];
+  for (let i = 0; i < 700; i++) {
+    let u = rnd(-1, 1), th = rnd(0, Math.PI * 2), r = Math.cbrt(Math.random());
+    let x = Math.sqrt(1 - u * u) * Math.cos(th) * r, yy = u * r, z = Math.sqrt(1 - u * u) * Math.sin(th) * r;
+    if (Math.abs(x) < 0.06) x += Math.sign(x || 1) * 0.06; // hemispheric fissure
+    if (yy < -0.45 && Math.abs(z) < 0.5 && z > 0) yy = -0.45; // flatten base
+    npts.push({ x: x * 1.0, y: yy * 0.78, z: z * 1.25, f: 0 });
+  }
+  const bands = [0, 0, 0, 0, 0];
+  function drawNeural(t) {
+    const ctx = fitCanvas(neuralC), W = neuralC.width, H = neuralC.height, d = devicePixelRatio || 1;
+    ctx.clearRect(0, 0, W, H);
+    const a = t / 3000, ca = Math.cos(a), sa = Math.sin(a);
+    const sc = Math.min(W * 0.36, H * 0.62), cx = W * 0.36, cy = H * 0.5;
+    const lc = state.colors.line, ac = state.colors.accent;
+    const stress = clamp((Math.abs(state.hr - 72) + Math.abs(state.rr - 14) * 3) / 120, 0, 1);
+    const brainAnom = ORGANS.brain.anomaly && !ORGANS.brain.anomaly.fixed;
+    for (const p of npts) {
+      if (Math.random() < 0.002 + stress * 0.01 + (brainAnom ? 0.006 : 0)) p.f = 1;
+      p.f *= 0.93;
+      const x = p.x * ca + p.z * sa, z = -p.x * sa + p.z * ca;
+      const persp = 1 / (2.6 - z);
+      const px = cx + x * sc * persp * 2.2, py = cy + p.y * sc * persp * 2.2;
+      ctx.globalAlpha = 0.25 + 0.5 * (z + 1.25) / 2.5 + p.f * 0.5;
+      ctx.fillStyle = p.f > 0.3 ? ac : lc;
+      const r = (0.9 + p.f * 2.2) * d;
+      ctx.fillRect(px - r / 2, py - r / 2, r, r);
+    }
+    ctx.globalAlpha = 1;
+    // EEG band bars
+    const names = ['δ', 'θ', 'α', 'β', 'γ'];
+    const target = [0.25, 0.35, 0.7 - stress * 0.4, 0.4 + stress * 0.5, 0.2 + stress * 0.4 + (brainAnom ? 0.4 : 0)];
+    const bx = W * 0.72, bw = (W * 0.26) / 5;
+    ctx.font = `${10 * d}px monospace`;
+    names.forEach((n, i) => {
+      bands[i] += (clamp(target[i] + rnd(-0.08, 0.08), 0.05, 1) - bands[i]) * 0.08;
+      const h = bands[i] * (H - 28 * d);
+      ctx.fillStyle = lc; ctx.globalAlpha = 0.85;
+      ctx.fillRect(bx + i * bw + 2 * d, H - 16 * d - h, bw - 4 * d, h);
+      ctx.globalAlpha = 1; ctx.fillStyle = state.colors.dim;
+      ctx.fillText(n, bx + i * bw + bw / 2 - 3 * d, H - 4 * d);
+    });
+    $('#neuralTag').textContent = 'SYNC ' + Math.round(ORGANS.brain.vals[3]) + '%';
+  }
+
+  /* ---------- Vitals ---------- */
+  const vitals = { spo2: 98, sys: 118, dia: 76, temp: 36.8 };
+  const gridEl = $('#gridNums');
+  function tickVitals() {
+    const hypo = Math.max(0, 10 - state.rr) * 1.6 + Math.max(0, state.hr - 150) * 0.08 + Math.max(0, 45 - state.hr) * 0.3;
+    vitals.spo2 = clamp(98.5 - hypo + rnd(-0.4, 0.4), 60, 100);
+    vitals.sys = 118 + (state.hr - 72) * 0.45 + rnd(-2, 2);
+    vitals.dia = 76 + (state.hr - 72) * 0.2 + rnd(-1.5, 1.5);
+    vitals.temp = 36.8 + (state.hr - 72) * 0.004 + rnd(-0.04, 0.04);
+    $('#spo2').textContent = Math.round(vitals.spo2);
+    $('#bp').textContent = `${Math.round(vitals.sys)}/${Math.round(vitals.dia)}`;
+    $('#temp').textContent = vitals.temp.toFixed(1);
+    $('#hrNum').textContent = state.hr;
+    $('#rrNum').textContent = state.rr;
+    gridEl.innerHTML = Array.from({ length: 15 }, () => {
+      const v = rnd(-8, 99) * (1 + (state.hr - 72) / 200);
+      return `<span class="${v < 0 ? 'neg' : ''}">${v.toFixed(2)}</span>`;
+    }).join('');
+
+    const al = [];
+    if (state.hr < 50) al.push('BRADYCARDIA');
+    if (state.hr > 140) al.push('TACHYCARDIA');
+    if (state.rr < 8) al.push('BRADYPNEA');
+    if (state.rr > 30) al.push('TACHYPNEA');
+    if (vitals.spo2 < 90) al.push('HYPOXIA');
+    const newOnes = al.filter(a => !state.alarms.includes(a));
+    newOnes.forEach(a => log(`ALARM: ${a}`, 'bad'));
+    state.alarms = al;
+    const at = $('#alarmText');
+    $('#vitals').classList.toggle('alarm', al.length > 0 && !state.bypass);
+    if (state.bypass) { at.className = 'alarm-text bypass'; at.textContent = 'AUDIO ALARM BYPASS ON' + (al.length ? ' · ' + al.join(' ') : ''); }
+    else { at.className = 'alarm-text'; at.textContent = al.length ? '⚠ ' + al.join(' · ') : ''; }
+  }
+
+  /* =========================================================
+     Controls
+     ========================================================= */
+  $('#hrIn').oninput = (e) => { state.hr = +e.target.value; $('#hrVal').textContent = state.hr; };
+  $('#rrIn').oninput = (e) => { state.rr = +e.target.value; $('#rrVal').textContent = state.rr; };
+  $('#hrIn').onchange = () => log(`Cardiac pacing override → ${state.hr} bpm`, 'warn');
+  $('#rrIn').onchange = () => log(`Ventilator rate override → ${state.rr} br/min`, 'warn');
+  function toggleBypass() {
+    state.bypass = !state.bypass;
+    $('#bypassBtn').classList.toggle('on', state.bypass);
+    log(`Audio alarm bypass ${state.bypass ? 'ON' : 'OFF'}`, state.bypass ? 'warn' : '');
+  }
+  $('#bypassBtn').onclick = toggleBypass;
+  $('#soundBtn').onclick = () => {
+    state.sound = !state.sound;
+    $('#soundBtn').textContent = 'Sound: ' + (state.sound ? 'On' : 'Off');
+    $('#soundBtn').classList.toggle('on', state.sound);
+    beep(1000, 0.05);
+  };
+  const help = $('#help');
+  $('#helpBtn').onclick = () => help.classList.toggle('show');
+  help.onclick = () => help.classList.remove('show');
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    const k = e.key;
+    if (k >= '1' && k <= '5') toggleLayer(layerKeys[+k - 1]);
+    else if (k === 's' || k === 'S') startScan();
+    else if (k === 'm' || k === 'M') setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
+    else if (k === 'b' || k === 'B') toggleBypass();
+    else if (k === '?' || k === '/') help.classList.toggle('show');
+    else if (k === 'Escape') { help.classList.remove('show'); }
+    else if (k.startsWith('Arrow')) {
+      const st = e.shiftKey ? 25 : 5;
+      const dx = k === 'ArrowLeft' ? -st : k === 'ArrowRight' ? st : 0;
+      const dy = k === 'ArrowUp' ? -st : k === 'ArrowDown' ? st : 0;
+      moveReticle(state.ret.x + dx, state.ret.y + dy);
+      e.preventDefault();
+    } else return;
+  });
+  window.addEventListener('resize', () => { state.sliceDirty = true; });
+
+  /* =========================================================
+     Main loop
+     ========================================================= */
+  const lungsG = organEls.lungs, heartG = organEls.heart;
+  let last = performance.now(), acc250 = 0, acc600 = 0, sliceAcc = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+
+    // physiology
+    state.beat += dt * state.hr / 60;
+    if (state.beat >= 1) {
+      state.beat -= 1; state.pulse = 1;
+      beep(state.alarms.length && !state.bypass ? 1400 : 980, 0.045, 0.035);
+    }
+    state.resp = (state.resp + dt * state.rr / 60) % 1;
+    state.pulse *= Math.pow(0.02, dt);
+
+    const b = respFn(state.resp);
+    lungsG.setAttribute('transform', `translate(200,240) scale(${1 + 0.035 * b},${1 + 0.055 * b}) translate(-200,-240)`);
+    const hp = 1 + 0.07 * state.pulse;
+    heartG.setAttribute('transform', `translate(216,258) scale(${hp}) translate(-216,-258)`);
+
+    drawWave('ecg', dt, ecgFn(state.beat) + rnd(-0.01, 0.01), state.colors.line);
+    drawWave('resp', dt, b * 0.9, state.colors.ok || state.colors.line);
+    drawNeural(now);
+    stepScan(now);
+
+    acc250 += dt; acc600 += dt; sliceAcc += dt;
+    if (acc250 > 0.25) { acc250 = 0; tickMetrics(); }
+    if (acc600 > 0.6) {
+      acc600 = 0; tickVitals();
+      if (state.alarms.length && !state.bypass) beep(520, 0.15, 0.04, 'square');
+    }
+    if (state.sliceDirty || sliceAcc > 0.4) { sliceAcc = 0; state.sliceDirty = false; drawSlice(); }
+
+    const s = (now - state.t0) / 1000;
+    $('#clock').textContent = [s / 3600, (s / 60) % 60, s % 60].map(v => String(Math.floor(v)).padStart(2, '0')).join(':');
+    requestAnimationFrame(loop);
+  }
+
+  /* =========================================================
+     Boot
+     ========================================================= */
+  readColors();
+  computeBoxes();
+  updateReticle();
+  renderDetail(false);
+  tickVitals();
+  [
+    ['HELIX-MERIDIAN Diagnostic Suite v7.3 online', ''],
+    ['Holographic emitters calibrated (±0.02 mm)', ''],
+    ['Subject HMX-07329 linked · neural lace handshake OK', 'good'],
+    ['Telemetry streams: ECG, RESP, EEG, NIBP, SpO₂', ''],
+    ['Awaiting operator. Press ? for controls.', 'warn']
+  ].forEach(([m, c], i) => setTimeout(() => log(m, c), 250 * i));
+  setTimeout(() => selectOrgan('heart', true), 1400);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
