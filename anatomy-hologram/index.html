@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Holographic Anatomy Display</title>
+<style>
+  :root{
+    --bg:#020a10; --panel:rgba(6,30,42,.55); --line:#25e6ff; --dim:#0f6a7d;
+    --text:#bff6ff; --muted:#5fa9b8; --warn:#ffb347; --ok:#5dffb0; --red:#ff3b5c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;overflow:hidden}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:4;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.75) 100%);}
+  .grid-bg{position:fixed;inset:0;z-index:0;
+    background-image:linear-gradient(rgba(37,230,255,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(37,230,255,.06) 1px,transparent 1px);
+    background-size:40px 40px;}
+  header{position:relative;z-index:2;display:flex;justify-content:space-between;align-items:center;
+    padding:10px 20px;border-bottom:1px solid rgba(37,230,255,.25);font-size:12px;letter-spacing:.18em;flex-wrap:wrap;gap:6px 16px}
+  header .title{color:var(--line);font-weight:700;text-shadow:0 0 8px var(--line)}
+  header .blink{color:var(--ok);animation:blink 1.4s steps(2) infinite}
+  @keyframes blink{50%{opacity:.2}}
+  main{position:relative;z-index:2;display:grid;grid-template-columns:290px 1fr 290px;gap:14px;
+    height:calc(100% - 78px);padding:12px 18px}
+  .panel{background:var(--panel);border:1px solid rgba(37,230,255,.25);position:relative;padding:14px;
+    backdrop-filter:blur(2px);overflow:auto}
+  .panel::before,.panel::after{content:"";position:absolute;width:14px;height:14px;border:2px solid var(--line)}
+  .panel::before{top:-2px;left:-2px;border-right:none;border-bottom:none}
+  .panel::after{bottom:-2px;right:-2px;border-left:none;border-top:none}
+  .col{display:flex;flex-direction:column;gap:14px;min-height:0}
+  h2{margin:0 0 10px;font-size:11px;letter-spacing:.25em;color:var(--line);font-weight:600}
+  h2::before{content:"▸ "}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:12px}
+  .kv span:nth-child(odd){color:var(--muted)}
+  .vital{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed rgba(37,230,255,.15);padding:5px 0}
+  .vital .lbl{font-size:10px;color:var(--muted);letter-spacing:.15em}
+  .vital .val{font-size:20px;color:var(--text);text-shadow:0 0 6px rgba(37,230,255,.6)}
+  .vital .val small{font-size:10px;color:var(--muted);margin-left:3px}
+  .vital.hr .val{color:#ff8fa3;text-shadow:0 0 8px rgba(255,59,92,.7)}
+  canvas{width:100%;height:70px;display:block;margin-top:8px;border:1px solid rgba(37,230,255,.15)}
+  .stage{position:relative;min-height:0;display:flex;align-items:center;justify-content:center}
+  .stage svg{height:100%;width:100%;max-width:640px;overflow:visible}
+  .toggles button{display:flex;width:100%;justify-content:space-between;align-items:center;margin:0 0 6px;
+    padding:8px 10px;background:transparent;border:1px solid rgba(37,230,255,.3);color:var(--text);
+    font:inherit;font-size:11px;letter-spacing:.15em;cursor:pointer;transition:.2s}
+  .toggles button:hover{background:rgba(37,230,255,.08)}
+  .toggles button .st{color:var(--ok)}
+  .toggles button.off{opacity:.45}.toggles button.off .st{color:var(--muted)}
+  #info .name{font-size:18px;color:#fff;letter-spacing:.1em;text-shadow:0 0 10px var(--sel,var(--line));margin-bottom:2px}
+  #info .sys{font-size:10px;color:var(--muted);letter-spacing:.2em;margin-bottom:10px}
+  #info .note{font-size:12px;line-height:1.5;color:var(--text);margin-top:10px}
+  .bar{height:5px;background:rgba(37,230,255,.12);margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--sel,var(--line));box-shadow:0 0 8px var(--sel,var(--line))}
+  .list{display:flex;flex-wrap:wrap;gap:5px}
+  .list span{font-size:10px;padding:3px 6px;border:1px solid rgba(37,230,255,.25);cursor:pointer;letter-spacing:.08em}
+  .list span:hover,.list span.on{background:rgba(37,230,255,.15);color:#fff}
+  footer{position:relative;z-index:2;height:24px;border-top:1px solid rgba(37,230,255,.25);overflow:hidden;
+    font-size:10px;color:var(--muted);letter-spacing:.2em;white-space:nowrap}
+  footer div{display:inline-block;padding-top:5px;animation:tick 40s linear infinite}
+  @keyframes tick{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+
+  /* SVG styling */
+  .skin path{fill:rgba(37,230,255,.05);stroke:var(--line);stroke-width:1.1;filter:url(#glow)}
+  .bone{fill:rgba(225,250,255,.10);stroke:#d8faff;stroke-width:.8}
+  .boneline{fill:none;stroke:#d8faff;stroke-width:.8}
+  .bgrp{cursor:pointer;transition:opacity .25s}
+  .organ{cursor:pointer;transition:opacity .25s,filter .25s}
+  .organ .f{fill-opacity:.28;stroke-width:1}
+  .organ .t{fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .dimmed .organ:not(.active),.dimmed .bgrp:not(.active){opacity:.25}
+  .organ.active .f{fill-opacity:.6}
+  .organ.active,.bgrp.active{filter:url(#glowStrong)}
+  .bgrp.active .bone,.bgrp.active .boneline{stroke:#fff;fill:rgba(255,255,255,.25)}
+  .heartbeat{transform-box:fill-box;transform-origin:center;animation:beat var(--beat,0.88s) infinite}
+  @keyframes beat{0%,100%{transform:scale(1)}10%{transform:scale(1.09)}22%{transform:scale(.97)}32%{transform:scale(1.04)}}
+  .breathe{transform-box:fill-box;transform-origin:50% 0;animation:breathe 4.3s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.04,1.05)}}
+  .flow{fill:none;stroke-width:1.4;stroke-dasharray:3 9;animation:flow 1.2s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-24}}
+  .callout line,.callout polyline{stroke:var(--line);stroke-width:.6;fill:none;opacity:.8}
+  .callout text{fill:var(--text);font-size:8.5px;letter-spacing:.12em}
+  .callout text.s{fill:var(--ok);font-size:6.5px}
+  .layer{transition:opacity .4s}
+  .layer.hidden{opacity:0;pointer-events:none}
+  @media (max-width:980px){
+    html,body{overflow:auto}
+    main{grid-template-columns:1fr;height:auto;padding:12px 16px}
+    .stage{height:80vh}
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<header>
+  <div class="title">BIOSCAN // HOLOGRAPHIC ANATOMY</div>
+  <div>SUBJECT <span style="color:#fff">F-20 · ID 7H-0419</span></div>
+  <div><span class="blink">●</span> LIVE SCAN · <span id="clock">--:--:--</span></div>
+</header>
+
+<main>
+  <section class="col">
+    <div class="panel">
+      <h2>SUBJECT PROFILE</h2>
+      <div class="kv">
+        <span>DESIGNATION</span><span>F-20</span>
+        <span>SEX</span><span>FEMALE</span>
+        <span>AGE</span><span>20 YRS</span>
+        <span>HEIGHT</span><span>168 CM</span>
+        <span>MASS</span><span>59.2 KG</span>
+        <span>BMI</span><span>21.0</span>
+        <span>BLOOD TYPE</span><span>O+</span>
+        <span>BONE DENSITY</span><span>T +0.4</span>
+        <span>SKELETAL AGE</span><span>PEAK MASS</span>
+      </div>
+    </div>
+    <div class="panel" style="flex:1">
+      <h2>VITALS</h2>
+      <div class="vital hr"><span class="lbl">HEART RATE</span><span class="val"><span id="hr">68</span><small>BPM</small></span></div>
+      <canvas id="ecg" width="520" height="140"></canvas>
+      <div class="vital"><span class="lbl">BLOOD PRESSURE</span><span class="val" id="bp">112/72<small>mmHg</small></span></div>
+      <div class="vital"><span class="lbl">SpO₂</span><span class="val"><span id="spo2">98</span><small>%</small></span></div>
+      <div class="vital"><span class="lbl">RESPIRATION</span><span class="val"><span id="rr">14</span><small>/MIN</small></span></div>
+      <div class="vital"><span class="lbl">CORE TEMP</span><span class="val"><span id="temp">36.7</span><small>°C</small></span></div>
+      <div class="vital"><span class="lbl">NEURAL SYNC</span><span class="val"><span id="neu">0.92</span><small>Φ</small></span></div>
+    </div>
+  </section>
+
+  <section class="stage" id="stage">
+    <svg id="body" viewBox="-60 20 520 880" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.6" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glowStrong" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#25e6ff" stop-opacity="0"/>
+          <stop offset=".85" stop-color="#25e6ff" stop-opacity=".22"/>
+          <stop offset="1" stop-color="#ffffff" stop-opacity=".9"/>
+        </linearGradient>
+        <radialGradient id="pad" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#25e6ff" stop-opacity=".45"/>
+          <stop offset="1" stop-color="#25e6ff" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="cone" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stop-color="#25e6ff" stop-opacity=".16"/>
+          <stop offset="1" stop-color="#25e6ff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- projector base -->
+      <g id="base">
+        <polygon points="90,880 310,880 380,60 20,60" fill="url(#cone)"/>
+        <ellipse cx="200" cy="880" rx="140" ry="16" fill="url(#pad)"/>
+        <ellipse cx="200" cy="880" rx="120" ry="12" fill="none" stroke="#25e6ff" stroke-width="1" stroke-dasharray="14 6 3 6" opacity=".8">
+          <animate attributeName="stroke-dashoffset" from="0" to="-290" dur="8s" repeatCount="indefinite"/>
+        </ellipse>
+        <ellipse cx="200" cy="880" rx="95" ry="9" fill="none" stroke="#25e6ff" stroke-width=".6" stroke-dasharray="2 4" opacity=".6">
+          <animate attributeName="stroke-dashoffset" from="0" to="120" dur="5s" repeatCount="indefinite"/>
+        </ellipse>
+      </g>
+
+      <g id="layer-skin" class="layer skin"></g>
+      <g id="layer-vascular" class="layer"></g>
+      <g id="layer-skeleton" class="layer"></g>
+      <g id="layer-organs" class="layer"></g>
+      <g id="layer-ribs" class="layer"></g>
+      <g id="layer-callouts" class="layer callout"></g>
+
+      <!-- scan beam -->
+      <g id="scan" pointer-events="none">
+        <rect x="40" y="0" width="320" height="70" fill="url(#beam)">
+          <animate attributeName="y" values="-30;800;-30" dur="7s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+    </svg>
+  </section>
+
+  <section class="col">
+    <div class="panel toggles">
+      <h2>DISPLAY LAYERS</h2>
+      <button data-layer="skin"><span>DERMAL SHELL</span><span class="st">ON</span></button>
+      <button data-layer="skeleton"><span>SKELETAL</span><span class="st">ON</span></button>
+      <button data-layer="organs"><span>ORGANS</span><span class="st">ON</span></button>
+      <button data-layer="vascular"><span>CIRCULATORY</span><span class="st">ON</span></button>
+      <button data-layer="callouts"><span>CALLOUTS</span><span class="st">ON</span></button>
+      <button data-layer="scan"><span>SCAN BEAM</span><span class="st">ON</span></button>
+    </div>
+    <div class="panel" id="info" style="flex:1">
+      <h2>STRUCTURE ANALYSIS</h2>
+      <div class="name" id="iName">SELECT A STRUCTURE</div>
+      <div class="sys" id="iSys">HOVER OR TAP THE HOLOGRAM</div>
+      <div class="kv" id="iKv"></div>
+      <div id="iBar"></div>
+      <div class="note" id="iNote">All monitored systems reporting within nominal parameters for a healthy 20-year-old female subject.</div>
+    </div>
+    <div class="panel">
+      <h2>INDEX</h2>
+      <div class="list" id="list"></div>
+    </div>
+  </section>
+</main>
+<footer><div id="ticker">
+  SCAN SEQUENCE 0x7H-0419 ▪ 206 BONES MAPPED ▪ 78 ORGANS INDEXED ▪ CARDIAC OUTPUT 5.1 L/MIN ▪ HEMOGLOBIN 13.6 g/dL ▪ GLUCOSE 88 mg/dL ▪ CORTISOL NOMINAL ▪ GROWTH PLATES FUSED ▪ NO ANOMALIES DETECTED ▪ HOLOGRAPHIC FIDELITY 99.2% ▪
+</div></footer>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+// mirror x around the body's midline (x=200); s=1 viewer-right, s=-1 viewer-left
+const mir = (str, s) => s === 1 ? str :
+  str.replace(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g, (m, x, y) => `${(400 - x).toFixed(1)},${y}`);
+const mx = (x, s) => 200 + s * (x - 200);
+const L = id => document.getElementById("layer-" + id);
+
+/* ---------------- structure data ---------------- */
+const DATA = {
+  brain:{name:"BRAIN",sys:"NERVOUS SYSTEM",color:"#ff7ad9",kv:{MASS:"1.26 kg",NEURONS:"86 B",PERFUSION:"750 mL/min",EEG:"α-DOMINANT"},load:0.62,
+    note:"Cortical activity steady. Prefrontal myelination near completion, consistent with early-twenties development."},
+  thyroid:{name:"THYROID",sys:"ENDOCRINE",color:"#b8f2e6",kv:{MASS:"18 g",TSH:"1.8 mIU/L",T4:"1.2 ng/dL"},load:0.4,note:"Hormone output balanced. Metabolic regulation nominal."},
+  trachea:{name:"TRACHEA",sys:"RESPIRATORY",color:"#7ee8fa",kv:{LENGTH:"11 cm",DIAMETER:"1.6 cm",AIRFLOW:"LAMINAR"},load:0.3,note:"Airway clear. Cartilage rings intact."},
+  lungs:{name:"LUNGS",sys:"RESPIRATORY",color:"#4fd1ff",kv:{MASS:"0.95 kg",CAPACITY:"4.6 L","TIDAL VOL":"470 mL",SpO2:"98 %"},load:0.55,
+    note:"Bilateral expansion symmetric. Alveolar gas exchange optimal."},
+  heart:{name:"HEART",sys:"CARDIOVASCULAR",color:"#ff3b5c",kv:{MASS:"245 g",RHYTHM:"SINUS","EJECTION FR":"63 %",OUTPUT:"5.1 L/min"},load:0.68,
+    note:"Four-chamber function synchronised. Valves competent, no murmur signatures."},
+  liver:{name:"LIVER",sys:"DIGESTIVE / METABOLIC",color:"#ff9f43",kv:{MASS:"1.38 kg",ALT:"18 U/L",GLYCOGEN:"STORED"},load:0.5,note:"Hepatic filtration and protein synthesis nominal."},
+  stomach:{name:"STOMACH",sys:"DIGESTIVE",color:"#ffd166",kv:{VOLUME:"0.4 L",pH:"2.1",MOTILITY:"3 /min"},load:0.35,note:"Gastric phase idle. Mucosal lining healthy."},
+  spleen:{name:"SPLEEN",sys:"LYMPHATIC",color:"#c77dff",kv:{MASS:"140 g",LENGTH:"11 cm"},load:0.3,note:"Blood filtration and immune reservoir functioning."},
+  pancreas:{name:"PANCREAS",sys:"DIGESTIVE / ENDOCRINE",color:"#f9c74f",kv:{MASS:"82 g",INSULIN:"7 µU/mL",GLUCOSE:"88 mg/dL"},load:0.42,note:"Islet response tuned. Glycaemic control excellent."},
+  kidneys:{name:"KIDNEYS",sys:"URINARY",color:"#f3722c",kv:{MASS:"2 × 135 g",GFR:"118 mL/min",FLOW:"1.1 L/min"},load:0.58,note:"Bilateral renal filtration balanced. Electrolytes stable."},
+  smallint:{name:"SMALL INTESTINE",sys:"DIGESTIVE",color:"#ffb4a2",kv:{LENGTH:"6.4 m","SURFACE":"32 m²"},load:0.45,note:"Peristalsis rhythmic. Nutrient absorption nominal."},
+  largeint:{name:"LARGE INTESTINE",sys:"DIGESTIVE",color:"#e5989b",kv:{LENGTH:"1.5 m",MICROBIOME:"DIVERSE"},load:0.4,note:"Colonic flora balanced. Water reclamation steady."},
+  uterus:{name:"UTERUS",sys:"REPRODUCTIVE",color:"#ff70a6",kv:{MASS:"55 g",SIZE:"7.5 × 5 cm",STATE:"NOMINAL"},load:0.36,note:"Reproductive system mature and healthy."},
+  ovaries:{name:"OVARIES",sys:"REPRODUCTIVE / ENDOCRINE",color:"#ff9ecf",kv:{MASS:"2 × 7 g",ESTRADIOL:"NOMINAL"},load:0.38,note:"Endocrine output within expected cyclical range."},
+  bladder:{name:"BLADDER",sys:"URINARY",color:"#90e0ef",kv:{CAPACITY:"450 mL",CURRENT:"120 mL"},load:0.27,note:"Detrusor tone normal."},
+  skull:{name:"SKULL",sys:"SKELETAL · AXIAL",color:"#d8faff",kv:{BONES:"22",SUTURES:"FUSED"},load:0.8,note:"Cranial vault integrity 100%. Protective shell for the brain."},
+  spine:{name:"VERTEBRAL COLUMN",sys:"SKELETAL · AXIAL",color:"#d8faff",kv:{VERTEBRAE:"33",CURVATURE:"NORMAL","DISC HYD.":"94 %"},load:0.85,note:"Cervical, thoracic and lumbar curves within norms. Discs well hydrated."},
+  ribcage:{name:"RIB CAGE",sys:"SKELETAL · AXIAL",color:"#d8faff",kv:{RIBS:"24",STERNUM:"INTACT"},load:0.78,note:"Thoracic cage flexes ±4% per breath cycle."},
+  pelvis:{name:"PELVIS",sys:"SKELETAL · APPENDICULAR",color:"#d8faff",kv:{TYPE:"GYNECOID",INLET:"ROUND / WIDE"},load:0.8,note:"Broad, shallow gynecoid pelvis characteristic of the female skeleton."},
+  arms:{name:"UPPER LIMBS",sys:"SKELETAL · APPENDICULAR",color:"#d8faff",kv:{BONES:"2 × 32","GRIP":"31 kg"},load:0.7,note:"Humerus, radius, ulna and 27 hand bones per limb. Joints fully articulated."},
+  legs:{name:"LOWER LIMBS",sys:"SKELETAL · APPENDICULAR",color:"#d8faff",kv:{BONES:"2 × 30","FEMUR":"44 cm"},load:0.82,note:"Femur is the longest bone in the body. Growth plates fully fused."}
+};
+
+/* ---------------- skin ---------------- */
+const SKIN = "M200,40 C235,40 250,65 250,100 C250,125 242,143 225,152 L222,175 C240,183 265,186 283,195 C298,203 302,220 302,240 L308,320 C312,345 316,370 320,400 L328,470 C330,485 332,495 331,505 C334,520 330,540 320,549 C312,552 307,542 307,530 L305,505 L299,470 C295,440 291,410 286,390 L279,330 C277,300 275,282 272,265 C270,300 262,330 255,360 C262,390 280,410 282,440 C284,470 280,500 276,540 L268,640 C266,690 262,740 256,822 C260,838 272,848 268,860 L224,860 C221,846 225,835 227,822 C227,760 223,700 222,650 C222,600 214,520 206,478 C204,472 202,470 200,470";
+[1,-1].forEach(s => el("path", {d: mir(SKIN, s)}, L("skin")));
+
+/* ---------------- skeleton helpers ---------------- */
+function bone(g, x1, y1, x2, y2, w){
+  const dx = x2-x1, dy = y2-y1, len = Math.hypot(dx,dy), ux = dx/len, uy = dy/len;
+  const nx = -uy, ny = ux, hw = w*0.32, r = w*0.55;
+  const p = (x,y,k) => `${(x+nx*k).toFixed(1)},${(y+ny*k).toFixed(1)}`;
+  const d = `M${p(x1,y1,hw)} L${p(x2,y2,hw)} A${r},${r} 0 1 0 ${p(x2,y2,-hw)} L${p(x1,y1,-hw)} A${r},${r} 0 1 0 ${p(x1,y1,hw)} Z`;
+  return el("path", {d, class:"bone"}, g);
+}
+const bgrp = (id, parent) => el("g", {class:"bgrp", "data-id":id}, parent);
+const SK = L("skeleton");
+
+// skull
+const skull = bgrp("skull", SK);
+const CRAN = "M200,48 C230,48 244,70 244,98 C244,116 239,126 234,132 C232,140 228,146 222,150 C214,157 207,159 200,159";
+el("path", {d: mir(CRAN,1)+" "+mir(CRAN,-1).replace("M","M"), class:"boneline"}, skull);
+el("path", {d: mir(CRAN,1)+" L200,48 Z", class:"bone", style:"stroke:none"}, skull);
+el("path", {d: mir(CRAN,-1)+" L200,48 Z", class:"bone", style:"stroke:none"}, skull);
+[1,-1].forEach(s => {
+  el("ellipse", {cx:mx(216,s), cy:101, rx:10, ry:8, class:"boneline"}, skull);
+  el("path", {d: mir("M234,118 C226,122 218,124 212,128", s), class:"boneline", opacity:.6}, skull);
+});
+el("path", {d:"M200,108 L194,123 L206,123 Z", class:"boneline"}, skull);
+el("path", {d:"M186,138 L214,138 M186,143 L214,143 M190,138 L190,143 M195,138 L195,143 M200,138 L200,143 M205,138 L205,143 M210,138 L210,143", class:"boneline", opacity:.8}, skull);
+
+// spine
+const spine = bgrp("spine", SK);
+for (let i=0;i<7;i++)  el("rect",{x:194,y:160+i*6,width:12,height:4.6,rx:1.5,class:"bone"},spine);
+for (let i=0;i<12;i++) el("rect",{x:193,y:203+i*10.6,width:14,height:8.6,rx:2,class:"bone"},spine);
+for (let i=0;i<5;i++)  el("rect",{x:190,y:332+i*15.5,width:20,height:12.5,rx:3,class:"bone"},spine);
+
+// pelvis
+const pelvis = bgrp("pelvis", SK);
+const PEL = "M202,410 C220,398 250,392 266,402 C276,412 272,430 262,442 C256,450 252,458 246,465 C236,473 220,475 204,473";
+[1,-1].forEach(s => {
+  el("path", {d: mir(PEL,s), class:"boneline", "stroke-width":1.2}, pelvis);
+  el("path", {d: mir("M214,412 C232,406 252,404 260,414 C262,424 254,432 246,438", s), class:"boneline", opacity:.5}, pelvis);
+  el("ellipse", {cx:mx(229,s), cy:459, rx:10, ry:7, class:"boneline"}, pelvis);
+  el("circle", {cx:mx(256,s), cy:452, r:8, class:"boneline", opacity:.8}, pelvis);
+});
+el("path", {d:"M187,410 L213,410 L207,452 L200,458 L193,452 Z", class:"bone"}, pelvis);
+el("path", {d:"M190,420 L210,420 M191,430 L209,430 M193,440 L207,440", class:"boneline", opacity:.6}, pelvis);
+
+// arms
+const arms = bgrp("arms", SK);
+[1,-1].forEach(s => {
+  el("circle",{cx:mx(284,s),cy:206,r:8.5,class:"bone"},arms);
+  bone(arms, mx(285,s),210, mx(297,s),346, 9);
+  bone(arms, mx(301,s),354, mx(322,s),492, 5.5);
+  bone(arms, mx(292,s),354, mx(313,s),492, 5.5);
+  for (let k=0;k<4;k++) el("circle",{cx:mx(312+k*3.4,s),cy:500+(k%2)*3,r:2.6,class:"bone"},arms);
+  const fingers = [[310,508,309,532],[314,509,314,546],[318,509,319,549],[322,508,324,545],[327,505,333,528]];
+  fingers.forEach(f => {
+    bone(arms, mx(f[0],s), f[1], mx((f[0]+f[2])/2,s), (f[1]+f[3])/2, 3);
+    bone(arms, mx((f[0]+f[2])/2,s), (f[1]+f[3])/2+1.5, mx(f[2],s), f[3], 2.6);
+  });
+});
+
+// legs
+const legs = bgrp("legs", SK);
+[1,-1].forEach(s => {
+  el("circle",{cx:mx(254,s),cy:452,r:7,class:"bone"},legs);
+  bone(legs, mx(258,s),462, mx(245,s),630, 10);
+  el("circle",{cx:mx(244,s),cy:640,r:6.5,class:"bone"},legs);
+  bone(legs, mx(242,s),652, mx(239,s),818, 8);
+  bone(legs, mx(256,s),656, mx(252,s),814, 4);
+  el("path",{d:mir("M232,826 C238,822 250,822 254,828 L262,856 L226,858 Z",s),class:"bone"},legs);
+  [228,235,242,249,256].forEach((x,i)=> el("path",{d:mir(`M${240+(i-2)*2},836 L${x},856`,s),class:"boneline",opacity:.7},legs));
+});
+
+// rib cage (on top of organs)
+const ribs = bgrp("ribcage", L("ribs"));
+ribs.style.opacity = .85;
+el("path",{d:"M195,204 L205,204 L206,215 L204,288 L200,298 L196,288 L194,215 Z",class:"bone"},ribs);
+[1,-1].forEach(s => {
+  el("path",{d:mir("M206,196 C228,188 255,192 282,198",s),class:"boneline","stroke-width":2.2,"stroke-linecap":"round"},ribs);
+  el("path",{d:mir("M260,205 L282,210 L270,272 Z",s),class:"boneline",opacity:.35},ribs);
+  for (let i=0;i<10;i++){
+    const y = 212 + i*10.4;
+    const ox = 254 + Math.min(i,5)*2.4 - Math.max(0,i-6)*3.5;
+    const ey = y + 18 + i*1.4;
+    const d = `M204,${y} C226,${y-9} ${ox},${y-3} ${ox+3},${y+9} C${ox+5},${y+19} ${ox-2},${ey} ${ox-8},${ey+5}`;
+    el("path",{d:mir(d,s),class:"boneline","stroke-width":1.4,opacity:.9},ribs);
+  }
+});
+
+/* ---------------- organs ---------------- */
+const OR = L("organs");
+function organ(id, build){
+  const c = DATA[id].color;
+  const g = el("g",{class:"organ","data-id":id},OR);
+  build(g, c);
+  return g;
+}
+const fpath = (g,d,c,extra={}) => el("path",Object.assign({d,class:"f",fill:c,stroke:c},extra),g);
+const tpath = (g,d,c,w,extra={}) => el("path",Object.assign({d,class:"t",stroke:c,"stroke-width":w},extra),g);
+
+organ("brain",(g,c)=>{
+  fpath(g,"M200,54 C226,54 240,68 240,88 C240,104 232,114 220,118 C212,120 206,118 200,116 C194,118 188,120 180,118 C168,114 160,104 160,88 C160,68 174,54 200,54 Z",c);
+  tpath(g,"M200,56 L200,114",c,.8);
+  [1,-1].forEach(s=>{
+    tpath(g,mir("M206,66 C214,62 222,70 216,76 C210,82 222,88 230,84",s),c,.7);
+    tpath(g,mir("M206,90 C214,86 220,96 228,94 C234,92 236,100 232,106",s),c,.7);
+    tpath(g,mir("M208,104 C214,100 220,110 214,114",s),c,.7);
+    tpath(g,mir("M222,64 C232,70 236,78 234,86",s),c,.6);
+  });
+});
+organ("thyroid",(g,c)=>fpath(g,"M190,180 C186,173 194,171 197,177 L203,177 C206,171 214,173 210,180 C208,188 202,186 200,184 C198,186 192,188 190,180 Z",c));
+organ("trachea",(g,c)=>{
+  tpath(g,"M200,162 L200,222 L188,238 M200,222 L212,238",c,4.5,{"stroke-opacity":.35});
+  for(let y=166;y<220;y+=5) tpath(g,`M197.5,${y} L202.5,${y}`,c,.8);
+});
+organ("lungs",(g,c)=>{
+  const a = el("g",{class:"breathe"},g);
+  fpath(a,"M192,212 C178,206 160,218 154,240 C148,265 148,292 152,312 C165,318 180,314 194,306 C196,280 196,240 192,212 Z",c);
+  tpath(a,"M188,236 C176,240 168,250 160,262 M190,262 C178,270 168,284 162,298",c,.6);
+  const b = el("g",{class:"breathe"},g);
+  fpath(b,"M208,212 C222,206 240,218 246,240 C252,265 252,292 248,312 C238,316 228,314 222,308 C226,296 222,284 212,280 C210,260 210,236 208,212 Z",c);
+  tpath(b,"M212,236 C224,240 232,250 240,262 M226,286 C232,292 238,298 242,304",c,.6);
+});
+organ("heart",(g,c)=>{
+  const h = el("g",{class:"heartbeat",id:"heartG"},g);
+  fpath(h,"M206,252 C214,244 226,248 230,256 C236,266 232,282 220,294 C214,300 208,302 204,300 C196,292 190,282 192,270 C193,260 198,254 206,252 Z",c);
+  tpath(h,"M208,256 C212,270 214,284 210,298",c,.7);
+  tpath(h,"M204,252 C202,240 194,236 192,246",c,2.6,{"stroke-opacity":.7});
+});
+organ("liver",(g,c)=>{
+  fpath(g,"M146,312 C160,302 200,300 222,306 C228,310 226,318 218,322 C200,330 190,342 172,348 C160,350 150,342 146,330 Z",c);
+  tpath(g,"M190,306 C188,318 182,332 176,346",c,.6);
+});
+organ("stomach",(g,c)=>{
+  fpath(g,"M214,312 C226,304 246,308 250,322 C254,338 246,354 228,358 C218,360 208,356 204,350 C210,346 220,346 226,340 C232,332 226,322 214,320 Z",c);
+  tpath(g,"M232,318 C240,326 242,338 234,348",c,.6);
+});
+organ("spleen",(g,c)=>fpath(g,"M254,312 C262,314 264,334 258,342 C252,344 249,330 250,320 C250,314 252,312 254,312 Z",c));
+organ("pancreas",(g,c)=>fpath(g,"M186,344 C200,338 220,340 240,336 C246,336 248,342 242,344 C224,348 208,352 192,352 C184,352 182,346 186,344 Z",c));
+organ("kidneys",(g,c)=>{
+  const K = "M170,346 C180,344 186,352 182,358 C180,362 182,366 184,370 C186,378 176,382 168,378 C160,372 160,352 170,346 Z";
+  [1,-1].forEach(s=>{ fpath(g,mir(K,s===1?-1:1).replace(/^/,""),c); });
+  [1,-1].forEach(s=> tpath(g,mir("M228,362 L204,368 L203,452",s),c,.8,{"stroke-opacity":.6})); // ureters
+});
+organ("largeint",(g,c)=>{
+  const d="M166,422 C162,404 160,380 162,364 C164,356 172,354 182,356 C200,360 220,354 234,356 C242,358 242,366 241,376 C240,394 242,410 238,424 C232,436 216,432 208,440 C203,446 201,452 200,460";
+  tpath(g,d,c,9,{"stroke-opacity":.35});
+  tpath(g,d,c,9,{"stroke-dasharray":"1 4","stroke-opacity":.9,"stroke-width":8});
+});
+organ("smallint",(g,c)=>{
+  const d="M176,372 C190,366 210,366 224,372 C232,378 226,386 212,384 C196,382 180,384 178,392 C176,402 196,398 210,398 C226,398 232,406 222,412 C208,418 190,410 180,414 C172,418 178,426 194,424";
+  tpath(g,d,c,5,{"stroke-opacity":.45});
+  tpath(g,d,c,1,{});
+});
+organ("uterus",(g,c)=>{
+  fpath(g,"M188,428 C188,422 212,422 212,428 C212,438 206,446 203,452 L197,452 C194,446 188,438 188,428 Z",c);
+  [1,-1].forEach(s=> tpath(g,mir("M211,428 C218,421 226,424 228,431",s),c,1.2));
+});
+organ("ovaries",(g,c)=>[1,-1].forEach(s=>fpath(g,"",c,{d:`M${mx(230,s)-5},436 a5,3.6 0 1,0 10,0 a5,3.6 0 1,0 -10,0`})));
+organ("bladder",(g,c)=>fpath(g,"M188,458 C188,452 212,452 212,458 C212,466 206,470 200,470 C194,470 188,466 188,458 Z",c));
+
+/* ---------------- vascular ---------------- */
+const VA = L("vascular");
+const ART = "#ff3b5c", VEN = "#4d7cff";
+const arteries = ["M204,238 C205,210 210,182 214,152 L220,118","M206,238 C230,225 268,214 286,230 L298,345 L314,490 L318,530","M200,426 C215,436 240,446 252,462 L247,630 L243,820 L248,850"];
+const veins = ["M196,238 C195,210 190,182 186,152 L180,118","M194,240 C170,228 132,218 112,232 L101,345 L84,490 L80,528","M197,426 C182,436 158,446 146,462 L151,630 L155,820 L150,850"];
+el("path",{d:"M210,254 C214,236 196,232 198,250 L200,428",fill:"none",stroke:ART,"stroke-width":3,"stroke-opacity":.35},VA);
+el("path",{d:"M210,254 C214,236 196,232 198,250 L200,428",class:"flow",stroke:ART},VA);
+[1,-1].forEach(s=>{
+  arteries.forEach(a=>{ el("path",{d:mir(a,s),fill:"none",stroke:ART,"stroke-width":1.6,"stroke-opacity":.3},VA);
+                         el("path",{d:mir(a,s),class:"flow",stroke:ART},VA); });
+  veins.forEach(v=>{ const d=mir(mir(v,-1),s).replace(/(\d+\.?\d*),/g,(m,x)=>`${(+x+(s>0?-3:3)).toFixed(1)},`);
+                      el("path",{d,fill:"none",stroke:VEN,"stroke-width":1.2,"stroke-opacity":.3},VA);
+                      el("path",{d,class:"flow",stroke:VEN,style:"animation-direction:reverse"},VA); });
+});
+
+/* ---------------- callouts ---------------- */
+const CA = L("callouts");
+const callouts = [
+  ["brain",178,78,-1,72,"CEREBRUM","NEURAL Φ 0.92"],
+  ["lungs",162,262,-1,232,"PULMONARY","O₂ EXCH 98%"],
+  ["liver",162,326,-1,318,"HEPATIC","FILTRATION OK"],
+  ["pelvis",146,420,-1,420,"PELVIC GIRDLE","GYNECOID"],
+  ["legs",152,580,-1,600,"FEMUR","DENSITY +0.4"],
+  ["heart",224,266,1,248,"CARDIAC","SINUS · 68 BPM"],
+  ["kidneys",230,364,1,346,"RENAL","GFR 118"],
+  ["uterus",208,436,1,444,"REPRODUCTIVE","NOMINAL"],
+  ["skull",236,120,1,130,"CRANIUM","INTEGRITY 100%"],
+];
+callouts.forEach(([id,x,y,side,ly,label,sub])=>{
+  const g = el("g",{"data-id":id,style:"cursor:pointer"},CA);
+  const ex = side<0 ? 20 : 380, tx = side<0 ? -55 : 455;
+  el("polyline",{points:`${x},${y} ${ex},${ly} ${tx},${ly}`},g);
+  el("circle",{cx:x,cy:y,r:1.8,fill:"#25e6ff"},g);
+  el("text",{x:tx,y:ly-4,"text-anchor":side<0?"start":"end"},g).textContent = label;
+  el("text",{x:tx,y:ly+8,class:"s","text-anchor":side<0?"start":"end"},g).textContent = sub;
+});
+
+/* ---------------- interaction ---------------- */
+const svg = document.getElementById("body");
+let pinned = null;
+const list = document.getElementById("list");
+Object.keys(DATA).forEach(id=>{
+  const s = document.createElement("span"); s.textContent = DATA[id].name; s.dataset.id = id;
+  s.onmouseenter = () => show(id); s.onmouseleave = () => show(pinned);
+  s.onclick = () => { pinned = pinned===id ? null : id; show(pinned); };
+  list.appendChild(s);
+});
+function show(id){
+  svg.classList.toggle("dimmed", !!id);
+  svg.querySelectorAll("[data-id]").forEach(n => n.classList.toggle("active", n.dataset.id===id && !n.closest("#layer-callouts")));
+  list.querySelectorAll("span").forEach(n => n.classList.toggle("on", n.dataset.id===pinned));
+  const info = document.getElementById("info");
+  if (!id){
+    document.getElementById("iName").textContent = "SELECT A STRUCTURE";
+    document.getElementById("iSys").textContent = "HOVER OR TAP THE HOLOGRAM";
+    document.getElementById("iKv").innerHTML = ""; document.getElementById("iBar").innerHTML = "";
+    document.getElementById("iNote").textContent = "All monitored systems reporting within nominal parameters for a healthy 20-year-old female subject.";
+    info.style.removeProperty("--sel"); return;
+  }
+  const d = DATA[id];
+  info.style.setProperty("--sel", d.color);
+  document.getElementById("iName").textContent = d.name;
+  document.getElementById("iSys").textContent = d.sys;
+  document.getElementById("iKv").innerHTML = Object.entries(d.kv).map(([k,v])=>`<span>${k}</span><span>${v}</span>`).join("") +
+    `<span>STATUS</span><span style="color:var(--ok)">NOMINAL</span>`;
+  document.getElementById("iBar").innerHTML = `<div style="font-size:10px;color:var(--muted);margin-top:10px;letter-spacing:.15em">METABOLIC LOAD ${Math.round(d.load*100)}%</div><div class="bar"><i style="width:${d.load*100}%"></i></div>`;
+  document.getElementById("iNote").textContent = d.note;
+}
+svg.addEventListener("mouseover", e => { const n = e.target.closest("[data-id]"); if (n && !n.closest(".hidden")) show(n.dataset.id); });
+svg.addEventListener("mouseout",  e => { if (!e.relatedTarget || !e.relatedTarget.closest || !e.relatedTarget.closest("[data-id]")) show(pinned); });
+svg.addEventListener("click", e => { const n = e.target.closest("[data-id]"); const id = n && !n.closest(".hidden") ? n.dataset.id : null;
+  pinned = (id && pinned!==id) ? id : null; show(pinned); });
+
+document.querySelectorAll(".toggles button").forEach(b => b.onclick = () => {
+  const off = b.classList.toggle("off");
+  b.querySelector(".st").textContent = off ? "OFF" : "ON";
+  const t = b.dataset.layer === "scan" ? document.getElementById("scan") : L(b.dataset.layer);
+  t.classList.toggle("hidden", off);
+  if (b.dataset.layer === "skeleton") L("ribs").classList.toggle("hidden", off);
+});
+
+/* ---------------- vitals + ECG ---------------- */
+let hr = 68, phase = 0, last = performance.now();
+const cvs = document.getElementById("ecg"), ctx = cvs.getContext("2d");
+const W = cvs.width, H = cvs.height, buf = new Array(W).fill(H*0.6);
+function ecg(p){
+  const g = (c,w,a) => a*Math.exp(-((p-c)**2)/(2*w*w));
+  return g(.12,.025,.12) - g(.22,.008,.15) + g(.245,.01,1) - g(.27,.01,.25) + g(.48,.045,.28);
+}
+function frame(now){
+  const dt = (now-last)/1000; last = now;
+  const steps = Math.max(1, Math.round(dt*120));
+  for (let i=0;i<steps;i++){
+    phase += (hr/60)/120; if (phase>=1) phase -= 1;
+    buf.shift(); buf.push(H*0.62 - ecg(phase)*H*0.5 + (Math.random()-.5)*1.5);
+  }
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle="rgba(37,230,255,.08)"; ctx.lineWidth=1;
+  for (let x=0;x<W;x+=26){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for (let y=0;y<H;y+=26){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.strokeStyle="#ff6b85"; ctx.lineWidth=2.4; ctx.shadowColor="#ff3b5c"; ctx.shadowBlur=8;
+  ctx.beginPath(); buf.forEach((v,x)=> x ? ctx.lineTo(x,v) : ctx.moveTo(x,v)); ctx.stroke(); ctx.shadowBlur=0;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+const rnd = (v,lo,hi,step) => Math.min(hi,Math.max(lo,v+(Math.random()-.5)*step));
+let sys=112, dia=72, spo=98, rr=14, temp=36.7, neu=.92;
+setInterval(()=>{
+  hr = Math.round(rnd(hr,63,75,3)); sys = Math.round(rnd(sys,108,118,3)); dia = Math.round(rnd(dia,68,76,2));
+  spo = Math.round(rnd(spo,97,99,1.2)); rr = Math.round(rnd(rr,12,16,1.4)); temp = rnd(temp,36.5,36.9,.1); neu = rnd(neu,.86,.97,.03);
+  document.getElementById("hr").textContent = hr;
+  document.getElementById("bp").innerHTML = `${sys}/${dia}<small>mmHg</small>`;
+  document.getElementById("spo2").textContent = spo;
+  document.getElementById("rr").textContent = rr;
+  document.getElementById("temp").textContent = temp.toFixed(1);
+  document.getElementById("neu").textContent = neu.toFixed(2);
+  document.getElementById("heartG").style.setProperty("--beat", (60/hr).toFixed(2)+"s");
+  CA.querySelector('[data-id="heart"] text.s').textContent = `SINUS · ${hr} BPM`;
+}, 1500);
+setInterval(()=> document.getElementById("clock").textContent = new Date().toLocaleTimeString([], {hour12:false}), 1000);
+</script>
+</body>
+</html>
